@@ -1,0 +1,9 @@
+# Pinned to what actually resolved on Python 3.14 (macOS arm64), 2026-08-17.
+# Direct dependencies only — everything else in the venv is transitive.
+# Adding to this list is a conversation, not a commit.
+opencv-python==5.0.0.93
+fastapi==0.141.1
+uvicorn==0.52.3
+PyYAML==6.0.3
+numpy==2.5.2
+pytest==9.1.1

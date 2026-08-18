@@ -1,0 +1,57 @@
+# fingerling config
+#
+# Anything tagged PLACEHOLDER is a number nobody has measured yet. They're set to
+# values that let the app run end-to-end, not to values anyone can defend. Phase 3
+# replaces them with numbers off a real coverage curve. Don't quote them at anyone.
+
+capture:
+  # cv2.VideoCapture index for the webcam source.
+  camera_index: 0
+
+calibration:
+  # Which target to look for. "auto" tries aruco first, then card.
+  # One of: auto | aruco | card | none
+  target: auto
+
+  aruco:
+    # OpenCV predefined dictionary name. DICT_4X4_50 has the largest modules for a
+    # given physical marker size, so it survives being small on a phone screen.
+    dictionary: DICT_4X4_50
+    # Physical side length of the printed/displayed marker's outer black square, mm.
+    # null until you compute it from your phone's PPI. calibrate.py refuses to solve
+    # an ArUco homography while this is null rather than guessing a scale.
+    marker_length_mm: null
+
+  card:
+    # ISO/IEC 7810 ID-1. These two numbers are the standard, not a measurement of
+    # any particular card, so they're exact to the stated precision.
+    width_mm: 85.60
+    height_mm: 53.98
+    # A detected quad is rejected as "not a card" if its aspect ratio is further
+    # than this (fractional) from 85.60/53.98. Loose enough to survive perspective.
+    aspect_tolerance: 0.18
+    # Contour area floor as a fraction of frame area — filters specks.
+    min_area_frac: 0.002
+
+  # PLACEHOLDER. RMS reprojection residual, in pixels, above which the frame's
+  # calibration is called bad and every millimetre figure from it is suspect.
+  # Real value comes from Phase 3 validation against known objects.
+  max_reprojection_residual_px: 2.0
+
+trust:
+  # PLACEHOLDER. Weights blending mean landmark confidence with the geometric
+  # plausibility score into one trust number.
+  weight_landmark_confidence: 0.5
+  weight_plausibility: 0.5
+  # PLACEHOLDER. Below this, the fish goes to the human review queue.
+  review_below: 0.6
+
+decide:
+  # PLACEHOLDER. Spinal curvature index above this (on a trusted reading) is a cull.
+  # Units: max midline deviation from the snout-fork axis, divided by fork length.
+  curvature_cull_above: 0.06
+
+paths:
+  db: data/fingerling.db
+  frames: data/frames
+  exports: data/exports
