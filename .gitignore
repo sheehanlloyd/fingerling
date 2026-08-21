@@ -6,3 +6,13 @@ data/
 runs/
 frames/
 .DS_Store
+.pytest_cache/
+*.egg-info/
+.pytest_cache/
+*.egg-info/
+
+# ultralytics downloads pretrained weights into the cwd
+*.pt
+
+# generated source dump for review, not part of the project
+fingerling_review_bundle.txt

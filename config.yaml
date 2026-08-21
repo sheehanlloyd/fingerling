@@ -36,7 +36,14 @@ calibration:
   # PLACEHOLDER. RMS reprojection residual, in pixels, above which the frame's
   # calibration is called bad and every millimetre figure from it is suspect.
   # Real value comes from Phase 3 validation against known objects.
+  # Only meaningful for the card target — see the long note at the top of
+  # pipeline/calibrate.py for why a single ArUco marker can't produce one.
   max_reprojection_residual_px: 2.0
+
+  # PLACEHOLDER. How far from square-on the target may be before the frame is
+  # rejected. 1.0 is perfectly flat-on (in-plane rotation still scores 1.0);
+  # bigger means more tilt. This is the gate that actually catches a bad view.
+  max_obliquity: 2.0
 
 trust:
   # PLACEHOLDER. Weights blending mean landmark confidence with the geometric
