@@ -58,6 +58,17 @@ decide:
   # Units: max midline deviation from the snout-fork axis, divided by fork length.
   curvature_cull_above: 0.06
 
+detector:
+  # Stub for now. The real model comes later; this is just so I can build
+  # measurement and trust against something that moves.
+  # One of: normal | low_confidence | implausible | deformed | no_detection
+  backend: stub
+  stub_mode: normal
+  # Frame-to-frame jitter the stub adds, in pixels, so the UI looks alive.
+  stub_jitter_px: 1.5
+  # Bows the stub fish's midline, as a fraction of body length. 0.0 is straight.
+  stub_bend: 0.0
+
 paths:
   db: data/fingerling.db
   frames: data/frames
