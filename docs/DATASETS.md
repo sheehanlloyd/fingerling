@@ -129,3 +129,64 @@ The cheap move is to email the FishPhenoKey agreement now, since that clock runs
 independently, and meanwhile spend a Roboflow API key on reading all three schemas
 before committing. That doesn't need a decision from you today beyond "yes, get
 the key."
+
+## The working schema, and the trait list re-derived against it
+
+Since the real annotations never arrived, `pipeline/landmarks.py` defines a
+schema and everything downstream was built against it. Twelve points:
+
+| # | name | what it is | in FishPhenoKey? |
+|---|---|---|---|
+| 0 | `snout_tip` | most anterior point of the closed mouth | yes |
+| 1 | `eye_anterior` | anterior margin of the eye | yes |
+| 2 | `eye_posterior` | posterior margin of the eye | yes |
+| 3 | `operculum_posterior` | posterior edge of the gill cover | yes |
+| 4 | `dorsal_origin` | anterior insertion of the dorsal fin | yes |
+| 5 | `dorsal_insertion` | posterior insertion of the dorsal fin | yes |
+| 6 | `dorsal_apex` | outermost point of the dorsal fin margin | yes |
+| 7 | `ventral_margin` | lowest point of the ventral outline | yes |
+| 8 | `peduncle_dorsal` | top of the caudal peduncle | yes |
+| 9 | `peduncle_ventral` | bottom of the caudal peduncle | yes |
+| 10 | `caudal_fork` | the notch between the tail lobes | **no** |
+| 11 | `caudal_tip` | most posterior point of the tail fin | yes |
+
+Eleven of twelve are a subset of FishPhenoKey's 22, so if the real data follows
+that schema the mapping is a rename table. The twelfth is the problem, and it's
+the same problem the survey below already flagged: **nothing annotates the fork.**
+
+### What that means trait by trait
+
+- **Fork length** — computable only if `caudal_fork` exists. If the real schema
+  doesn't have it, this goes null with the reason attached; it does NOT silently
+  become total length. That's enforced by `TRAIT_REQUIREMENTS` in
+  `pipeline/landmarks.py` and there's a test for it
+  (`test_a_missing_landmark_nulls_only_the_traits_that_need_it`).
+- **Total length** — snout to tail tip. Always available, added as a fallback and
+  reported alongside. Not in CLAUDE.md's trait list.
+- **Standard length** — *not implemented.* It needs the hypural plate
+  ("posterior end of caudal vertebrae" in FishPhenoKey), which isn't in this
+  schema. If the real dataset has it, that's arguably the better primary length
+  trait since it doesn't move when a tail frays, and switching is a config-level
+  decision plus one entry in `TRAIT_REQUIREMENTS`.
+- **Body depth, depth ratio, peduncle depth** — map cleanly, no gaps.
+- **Spinal curvature** — still the weak one, exactly as the survey predicted. The
+  midline is four derived points: snout, the midpoint of dorsal origin and
+  ventral margin, the midpoint of the two peduncle points, and the fork. Four
+  points fit a line and measure deviation, but **a fish bent between two of them
+  does not show up at all.** It's a coarse deformity proxy. It is called that
+  everywhere it appears.
+- **Condition factor** — unchanged: only with a hand-entered weight, never
+  estimated.
+- **Plausibility constraints** — well served. Snout, both eye corners and the
+  operculum give the eye-ordering check; both dorsal fin insertions give the
+  dorsal ordering check; both peduncle points give the not-swapped check. Ten
+  constraints in total, eight of them hard. This part of the schema is doing
+  what it was picked to do.
+
+### The honest summary
+
+Every trait in CLAUDE.md's list is implemented except standard length, which was
+never in that list. What's uncertain isn't the trait maths — that's tested
+against fixtures where I know the answer — it's whether these twelve names
+correspond to anything a real annotator drew. That question is one API key away
+from being answered.

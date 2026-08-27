@@ -58,6 +58,20 @@ decide:
   # Units: max midline deviation from the snout-fork axis, divided by fork length.
   curvature_cull_above: 0.06
 
+measure:
+  # PLACEHOLDER, all three. These turn a model confidence into a positional
+  # standard deviation in pixels, and nobody has measured what a confidence of
+  # 0.7 is actually worth on this model — there is no trained model yet. The
+  # shape of the mapping is a guess; only the ordering it produces means
+  # anything today. Phase 2 can fit these from a validation split.
+  sigma_at_conf1_px: 0.8   # positional sigma at confidence 1.0
+  sigma_at_conf0_px: 6.0   # positional sigma at confidence 0.0
+
+  # PLACEHOLDER. Assumed calibration-target corner error, in pixels, used only
+  # where a real residual isn't available (the ArUco path — see the note at the
+  # top of pipeline/calibrate.py about why a 4-point solve can't produce one).
+  assumed_corner_error_px: 0.5
+
 detector:
   # Stub for now. The real model comes later; this is just so I can build
   # measurement and trust against something that moves.
