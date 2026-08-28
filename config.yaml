@@ -7,6 +7,9 @@
 capture:
   # cv2.VideoCapture index for the webcam source.
   camera_index: 0
+  # Frames larger than this on the long edge get downscaled before the pipeline
+  # sees them. Keeps detection and calibration timing comparable across sources.
+  max_long_edge_px: 1280
 
 calibration:
   # Which target to look for. "auto" tries aruco first, then card.
