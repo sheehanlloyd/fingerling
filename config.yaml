@@ -53,6 +53,17 @@ trust:
   # PLACEHOLDER. Below this, the fish goes to the human review queue.
   review_below: 0.6
 
+plausibility:
+  # PLACEHOLDER ranges. Sanity bounds on dimensionless body proportions — these
+  # catch confident-but-anatomically-nonsense predictions. Numbers are eyeballed
+  # from what a healthy fish roughly looks like, not fitted to any dataset.
+  depth_ratio_min: 0.12
+  depth_ratio_max: 0.45
+  peduncle_to_depth_ratio_min: 0.20
+  peduncle_to_depth_ratio_max: 0.85
+  # Minimum separation, in pixels, before two landmarks count as degenerate.
+  min_landmark_separation_px: 2.0
+
 decide:
   # PLACEHOLDER. Spinal curvature index above this (on a trusted reading) is a cull.
   # Units: max midline deviation from the snout-fork axis, divided by fork length.
