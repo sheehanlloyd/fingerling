@@ -97,6 +97,18 @@ detector:
   # Bows the stub fish's midline, as a fraction of body length. 0.0 is straight.
   stub_bend: 0.0
 
+live:
+  # What the web app grades when it starts. Same spec the batch CLI takes: a
+  # video file, a directory of images, a camera index, or the word "webcam".
+  # It defaults to the synthetic sample clip so a fresh clone has something to
+  # show — `python -m cli.make_sample` writes it. There are no fish in it.
+  source: data/sample
+  # Frames per second the live loop grades at. Low on purpose: this is one
+  # operator looking at one tray, not a video pipeline.
+  fps: 6.0
+  loop: true
+  save_frames: false
+
 paths:
   db: data/fingerling.db
   frames: data/frames

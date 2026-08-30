@@ -7,3 +7,9 @@ uvicorn==0.52.3
 PyYAML==6.0.3
 numpy==2.5.2
 pytest==9.1.1
+
+# WebSocket transport. uvicorn ships no WebSocket implementation of its own, so
+# without this `ws="auto"` resolves to none and the live view's socket is simply
+# refused. The alternatives were wsproto, or uvicorn[standard] which drags in
+# several more packages for things this doesn't use.
+websockets==17.1

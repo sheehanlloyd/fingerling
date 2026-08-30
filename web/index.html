@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>fingerling</title>
+<style>
+  /* Deliberately plain. CLAUDE.md says unstyled HTML plus a little CSS, and if
+     this file starts growing a component system something has gone wrong. */
+  body { font: 14px/1.45 -apple-system, system-ui, sans-serif; margin: 0; padding: 16px;
+         color: #1c1c1c; background: #fafafa; }
+  h1 { font-size: 18px; margin: 0 0 2px; }
+  h2 { font-size: 14px; margin: 20px 0 6px; text-transform: uppercase;
+       letter-spacing: .06em; color: #666; }
+  .sub { color: #777; margin: 0 0 16px; }
+  .cols { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .col { flex: 1 1 380px; min-width: 320px; }
+  img#live { width: 100%; background: #222; border: 1px solid #ccc; display: block; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 3px 6px; border-bottom: 1px solid #e2e2e2;
+           white-space: nowrap; }
+  th { color: #666; font-weight: 600; }
+  .scroll { max-height: 340px; overflow: auto; border: 1px solid #ddd; background: #fff; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0;
+       background: #fff; border: 1px solid #ddd; padding: 10px; }
+  dt { color: #666; }
+  dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .PASS   { color: #17701f; font-weight: 600; }
+  .CULL   { color: #a11; font-weight: 600; }
+  .REVIEW { color: #a26100; font-weight: 600; }
+  .muted { color: #888; }
+  .bad { color: #a11; }
+  button { font: inherit; padding: 3px 9px; margin-right: 4px; cursor: pointer; }
+  .queue-item { border: 1px solid #ddd; background: #fff; padding: 8px; margin-bottom: 8px; }
+  .constraints { margin: 4px 0 6px; padding-left: 18px; color: #a11; }
+  .bar { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  code { background: #eee; padding: 1px 4px; }
+</style>
+</head>
+<body>
+
+<h1>fingerling</h1>
+<p class="sub" id="banner">connecting…</p>
+
+<div class="bar">
+  <button id="btn-start">start</button>
+  <button id="btn-stop">stop</button>
+  <label>source <input id="src" size="18" value=""></label>
+  <button id="btn-export">export CSV</button>
+  <span class="muted" id="counts"></span>
+</div>
+
+<div class="cols">
+  <div class="col">
+    <h2>Live</h2>
+    <img id="live" alt="live view">
+    <p class="muted" id="cal"></p>
+
+    <h2>Current fish</h2>
+    <dl id="current"><dt>waiting</dt><dd>—</dd></dl>
+  </div>
+
+  <div class="col">
+    <h2>Review queue <span class="muted" id="queue-count"></span></h2>
+    <div id="queue"><p class="muted">nothing waiting</p></div>
+
+    <h2>Records</h2>
+    <div class="scroll">
+      <table id="records">
+        <thead><tr>
+          <th>id</th><th>decision</th><th>trust</th><th>fork mm</th>
+          <th>depth ratio</th><th>curv</th><th>cal</th><th>human</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <h2>Per-stage latency (ms)</h2>
+    <div class="scroll" style="max-height:200px">
+      <table id="latency">
+        <thead><tr><th>stage</th><th>n</th><th>p50</th><th>p95</th><th>mean</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// No framework, no build step. Three things happen here: a websocket paints the
+// live view and the current-fish panel, and two fetch loops keep the records
+// table and the review queue fresh.
+// ---------------------------------------------------------------------------
+
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d = 1) => (v === null || v === undefined) ? "—" : Number(v).toFixed(d);
+
+function pm(value, sigma, digits = 1) {
+  // A measurement with no error bar next to it is the thing this whole project
+  // is trying not to produce, so the UI never shows one without the other.
+  if (value === null || value === undefined) return "—";
+  const s = (sigma === null || sigma === undefined) ? "" : ` ± ${Number(sigma).toFixed(digits)}`;
+  return `${Number(value).toFixed(digits)}${s}`;
+}
+
+function decisionCell(r) {
+  return `<span class="${r.decision}">${r.decision}</span>`;
+}
+
+// ---- live socket ----------------------------------------------------------
+
+let ws;
+function connect() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen = () => { $("banner").textContent = "connected"; };
+  ws.onclose = () => {
+    $("banner").textContent = "disconnected — retrying in 2s";
+    setTimeout(connect, 2000);
+  };
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === "frame") {
+      $("live").src = msg.image;
+      showCurrent(msg.record);
+      showStatus(msg.status);
+    } else if (msg.type === "status") {
+      showStatus(msg.status);
+    } else if (msg.type === "error") {
+      $("banner").innerHTML = `<span class="bad">${msg.message}</span>`;
+    } else if (msg.type === "ended") {
+      $("banner").textContent = "source ended";
+    }
+  };
+}
+
+function showStatus(s) {
+  if (!s) return;
+  if (!$("src").value) $("src").value = s.source;
+  $("banner").textContent =
+    `${s.running ? "running" : "stopped"} · detector ${s.detector} · ` +
+    `${s.frames_seen} frames · ${s.fish_graded} graded` +
+    (s.last_error ? ` · ${s.last_error}` : "");
+}
+
+function showCurrent(r) {
+  if (!r) return;
+  const failed = (r.failed_constraints_json ? JSON.parse(r.failed_constraints_json) : []) || [];
+  const rows = [
+    ["decision", decisionCell(r)],
+    ["trust", fmt(r.trust_score, 3)],
+    ["landmark confidence", fmt(r.landmark_confidence, 3)],
+    ["plausibility", fmt(r.plausibility_score, 3)],
+    ["fork length", r.fork_length_mm === null
+        ? '<span class="muted">uncalibrated</span>'
+        : pm(r.fork_length_mm, r.fork_length_mm_sigma) + " mm"],
+    ["total length", r.total_length_mm === null ? "—" : fmt(r.total_length_mm) + " mm"],
+    ["body depth", r.body_depth_mm === null ? "—" : pm(r.body_depth_mm, r.body_depth_mm_sigma) + " mm"],
+    ["depth ratio", pm(r.depth_ratio, r.depth_ratio_sigma, 3)],
+    ["peduncle depth", r.peduncle_depth_mm === null ? "—" : pm(r.peduncle_depth_mm, r.peduncle_depth_mm_sigma) + " mm"],
+    ["curvature", pm(r.curvature_index, r.curvature_index_sigma, 4)],
+    ["condition factor", r.condition_factor === null
+        ? '<span class="muted">no weight entered</span>' : fmt(r.condition_factor, 2)],
+    ["detector", `<span class="muted">${r.detector_source}</span>`],
+  ];
+  if (failed.length) rows.push(["failed", `<span class="bad">${failed.join(", ")}</span>`]);
+  $("current").innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+
+  $("cal").innerHTML = r.calibrated
+    ? `calibrated on <b>${r.calibration_target}</b> · obliquity ${fmt(r.calibration_obliquity, 2)}` +
+      ` · residual ${r.calibration_residual === null ? "n/a" : fmt(r.calibration_residual, 2) + " px"}` +
+      (r.calibration_reliable ? "" : ' · <span class="bad">view is too oblique to trust</span>')
+    : `<span class="bad">not calibrated</span> — ${r.calibration_reason || "no target"}; ` +
+      `millimetres are withheld, ratios still valid`;
+}
+
+// ---- tables ---------------------------------------------------------------
+
+async function refreshRecords() {
+  const res = await fetch("/api/records?limit=60");
+  const { records } = await res.json();
+  $("records").querySelector("tbody").innerHTML = records.map(r => `
+    <tr>
+      <td>${r.id}</td>
+      <td>${decisionCell(r)}</td>
+      <td>${fmt(r.trust_score, 2)}</td>
+      <td>${r.fork_length_mm === null ? '<span class="muted">px only</span>' : fmt(r.fork_length_mm)}</td>
+      <td>${fmt(r.depth_ratio, 3)}</td>
+      <td>${fmt(r.curvature_index, 3)}</td>
+      <td>${r.calibrated ? (r.calibration_reliable ? "ok" : '<span class="bad">oblique</span>') : '<span class="muted">no</span>'}</td>
+      <td>${r.human_corrected ? `<span class="${r.human_decision}">${r.human_decision}</span>` : ""}</td>
+    </tr>`).join("");
+}
+
+async function refreshStats() {
+  const s = await (await fetch("/api/stats")).json();
+  const c = s.counts;
+  $("counts").textContent =
+    `${c.total} graded · ${c.PASS} pass · ${c.CULL} cull · ${c.REVIEW} review · ${c.awaiting_review} awaiting`;
+  const order = ["detect", "calibrate", "measure", "trust", "decide", "save_frame", "total"];
+  const stages = order.filter(k => s.latency_ms[k]);
+  $("latency").querySelector("tbody").innerHTML = stages.map(k => {
+    const v = s.latency_ms[k];
+    return `<tr><td>${k}</td><td>${v.n}</td><td>${fmt(v.p50, 2)}</td>` +
+           `<td>${fmt(v.p95, 2)}</td><td>${fmt(v.mean, 2)}</td></tr>`;
+  }).join("");
+}
+
+async function refreshQueue() {
+  const { records } = await (await fetch("/api/records?needs_review=true&limit=15")).json();
+  $("queue-count").textContent = records.length ? `(${records.length})` : "";
+  if (!records.length) { $("queue").innerHTML = '<p class="muted">nothing waiting</p>'; return; }
+  $("queue").innerHTML = records.map(r => {
+    const failed = r.failed_constraints || [];
+    const reasons = r.decision_reasons || [];
+    return `<div class="queue-item">
+      <b>#${r.id}</b> · trust ${fmt(r.trust_score, 2)} ·
+      fork ${r.fork_length_mm === null ? "px only" : fmt(r.fork_length_mm) + " mm"} ·
+      curv ${fmt(r.curvature_index, 3)}
+      <ul class="constraints">${failed.map(f => `<li>${f}</li>`).join("") ||
+        `<li class="muted">${reasons.join("; ")}</li>`}</ul>
+      <button onclick="correct(${r.id}, 'PASS')">pass</button>
+      <button onclick="correct(${r.id}, 'CULL')">cull</button>
+      <button onclick="correct(${r.id}, 'REVIEW')">still unsure</button>
+      <input id="note-${r.id}" size="24" placeholder="note (optional)">
+    </div>`;
+  }).join("");
+}
+
+async function correct(id, decision) {
+  const note = ($(`note-${id}`) || {}).value || null;
+  await fetch(`/api/records/${id}/correct`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision, note }),
+  });
+  refreshQueue(); refreshRecords(); refreshStats();
+}
+
+// ---- controls -------------------------------------------------------------
+
+$("btn-start").onclick = () => fetch("/api/live/start", {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ source: $("src").value }),
+});
+$("btn-stop").onclick = () => fetch("/api/live/stop", { method: "POST" });
+$("btn-export").onclick = () => { location.href = "/api/export.csv"; };
+
+connect();
+refreshRecords(); refreshQueue(); refreshStats();
+setInterval(() => { refreshRecords(); refreshQueue(); refreshStats(); }, 3000);
+</script>
+</body>
+</html>
