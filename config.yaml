@@ -19,6 +19,7 @@ calibration:
   aruco:
     # OpenCV predefined dictionary name. DICT_4X4_50 has the largest modules for a
     # given physical marker size, so it survives being small on a phone screen.
+    # See docs/DECISIONS.md — this was my default pick, not a measured one.
     dictionary: DICT_4X4_50
     # Physical side length of the printed/displayed marker's outer black square, mm.
     # null until you compute it from your phone's PPI. calibrate.py refuses to solve
@@ -56,6 +57,11 @@ trust:
   # PLACEHOLDER. Below this, the fish goes to the human review queue.
   review_below: 0.6
 
+decide:
+  # PLACEHOLDER. Spinal curvature index above this (on a trusted reading) is a cull.
+  # Units: max midline deviation from the snout-fork axis, divided by fork length.
+  curvature_cull_above: 0.06
+
 plausibility:
   # PLACEHOLDER ranges. Sanity bounds on dimensionless body proportions — these
   # catch confident-but-anatomically-nonsense predictions. Numbers are eyeballed
@@ -66,11 +72,6 @@ plausibility:
   peduncle_to_depth_ratio_max: 0.85
   # Minimum separation, in pixels, before two landmarks count as degenerate.
   min_landmark_separation_px: 2.0
-
-decide:
-  # PLACEHOLDER. Spinal curvature index above this (on a trusted reading) is a cull.
-  # Units: max midline deviation from the snout-fork axis, divided by fork length.
-  curvature_cull_above: 0.06
 
 measure:
   # PLACEHOLDER, all three. These turn a model confidence into a positional
@@ -87,14 +88,27 @@ measure:
   assumed_corner_error_px: 0.5
 
 detector:
-  # Stub for now. The real model comes later; this is just so I can build
-  # measurement and trust against something that moves.
-  # One of: normal | low_confidence | implausible | deformed | no_detection
+  # Which detector actually runs. One of: stub | yolo
+  # `yolo` needs `weights` to point at a trained .pt file; if it's missing or
+  # ultralytics isn't installed, the code falls back to the stub, says so on
+  # stdout, and tags every record with the backend that really ran.
   backend: stub
+  weights: null
+  conf_threshold: 0.25
+  device: mps
+
+  # If the real model's keypoint order differs from pipeline/landmarks.py's
+  # SCHEMA, list its names here in ITS order and detect_yolo.py will remap.
+  # Null means the model already emits SCHEMA order.
+  keypoint_order: null
+
+  # Stub settings below. Only read when backend is `stub`.
+  # One of: normal | low_confidence | implausible | deformed | no_detection
   stub_mode: normal
   # Frame-to-frame jitter the stub adds, in pixels, so the UI looks alive.
   stub_jitter_px: 1.5
   # Bows the stub fish's midline, as a fraction of body length. 0.0 is straight.
+  # This is how the CULL path gets exercised without a real deformed fish.
   stub_bend: 0.0
 
 live:

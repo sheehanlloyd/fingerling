@@ -13,3 +13,16 @@ pytest==9.1.1
 # refused. The alternatives were wsproto, or uvicorn[standard] which drags in
 # several more packages for things this doesn't use.
 websockets==17.1
+
+# ---- Phase 2 only: training and the real detector ----
+# The app runs without these. pipeline/detect_yolo.py is imported lazily and
+# `detector.backend` defaults to `stub`, so a machine with none of this
+# installed still runs the pipeline, the CLI, the API and the whole test suite
+# except tests/test_train.py, which skips itself.
+#
+# Versions are what resolved on Python 3.14 alongside the pins above; the
+# constraint file kept opencv and numpy from being churned. torch 2.13.0 has
+# working MPS on this machine (verified: torch.backends.mps.is_available()).
+torch==2.13.0
+torchvision==0.28.0
+ultralytics==8.4.135

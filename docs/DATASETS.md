@@ -5,6 +5,39 @@ it costs to get. Nothing downloaded. The choice is mine to make and everything
 from checkpoint 3 onward waits on it, because the keypoint schema decides which
 traits are computable at all.
 
+## Update — the decision, and what blocked it
+
+**Chosen: fishKeypoints** (universe.roboflow.com/fish-o3fkg/fishkeypoints, CC BY
+4.0, 593 images), over FishPhenoKey.
+
+Not because it's the better dataset — it isn't, and the survey below still says
+so. FishPhenoKey is purpose-built for morphometric phenotyping, it's twenty times
+larger, and it's the only schema I could actually read. But access is a signed
+agreement emailed to a maintainer with an unknown turnaround, and that clock
+can't run inside a working session. fishKeypoints is immediately downloadable and
+has a license I can point at. The cost of that choice, stated plainly: a much
+smaller set, and I committed to it without having read its keypoint schema.
+
+**And then it didn't download.** The Roboflow API needs a key. There wasn't one
+in the environment, an unauthenticated request returns HTTP 401
+(`"This method requires your API key."`), and getting one means creating a
+Roboflow account, which was off the table. So the schema is *still* unverified,
+the survey's central caveat still stands, and no model in this repo has ever seen
+a fish.
+
+To unblock:
+
+```
+export ROBOFLOW_API_KEY=...
+python -m eval.dataset --fetch data/fishkeypoints
+python -m eval.dataset --describe data/fishkeypoints
+```
+
+The second command prints the keypoint count, names and flip_idx the export
+actually declares. Read it before touching measurement code. The section at the
+bottom of this file — "The working schema" — is what has to be checked against
+it.
+
 ## First, a caveat about what I could and couldn't verify
 
 Roboflow Universe returns 403 to every fetch from this machine — Cloudflare, not a
@@ -190,3 +223,4 @@ never in that list. What's uncertain isn't the trait maths — that's tested
 against fixtures where I know the answer — it's whether these twelve names
 correspond to anything a real annotator drew. That question is one API key away
 from being answered.
+
