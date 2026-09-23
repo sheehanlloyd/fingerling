@@ -307,7 +307,7 @@ store/       sqlite, one table, no ORM
 cli/         batch.py (video -> csv), make_sample.py (demo frames)
 eval/        dataset.py (fetch, leakage audit, regroup), train.py, validate_mm.py
 web/         index.html — the whole frontend, one file, no build step
-tests/       130 tests; the ones needing torch skip themselves if it's absent
+tests/       136 tests; 121 of them run without torch installed
 docs/        CALIBRATION.md, DATASETS.md, DECISIONS.md, images/
 ```
 
