@@ -1,6 +1,6 @@
 """The landmark schema, and the contract every detector returns.
 
-CLAUDE.md says the public dataset decides the schema. It finally got to. The
+The spec says the public dataset decides the schema. It finally got to. The
 dataset is Fish Measurement (Roboflow, CC BY 4.0, 245 images of salmonid parr in
 a tray) and it annotates FOUR points per fish, not twelve:
 

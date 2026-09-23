@@ -1,6 +1,6 @@
 """REST: list records, correct one, export CSV, read timing stats.
 
-No auth, no accounts, no settings endpoints. CLAUDE.md is explicit that this is a
+No auth, no accounts, no settings endpoints. The spec is explicit that this is a
 single-station operator tool and if a login form ever appears here something has
 gone wrong.
 

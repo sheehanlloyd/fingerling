@@ -21,6 +21,33 @@ the model has never seen. All three PASS. All three say "uncalibrated", because
 there's no calibration target in frame and the app won't print millimetres it
 can't defend.
 
+## The pipeline
+
+```mermaid
+flowchart LR
+  cap["capture<br/>webcam, video, dir"] --> det["detect<br/>yolo11n-pose"]
+  det --> cal["calibrate<br/>card, homography"]
+  cal --> mea["measure<br/>traits in mm, with sigma"]
+  mea --> tru["trust<br/>confidence AND plausibility"]
+  tru --> dec{decide}
+  dec --> ok["PASS"]
+  dec --> cull["CULL"]
+  dec --> rev["REVIEW"]
+  ok --> db[("sqlite<br/>one row per fish")]
+  cull --> db
+  rev --> op["operator<br/>corrects"]
+  op --> db
+```
+
+Every stage is timed separately and the breakdown is stored per fish, so the
+latency table further down is measured rather than estimated. The operator
+correction is written beside the machine's decision, never over it — that pair
+is the training data for the next model.
+
+**Jump to:** [running it](#running-it) · [what's real](#whats-real-and-what-isnt) ·
+[what I found](#what-i-found) · [numbers](#numbers) ·
+[what it can't do](#what-it-cant-do) · [tests](#tests)
+
 ## Running it
 
 Python 3.11+. Everything runs locally on a MacBook Pro M4 Pro, no cloud, no APIs.
@@ -36,9 +63,25 @@ Then open http://127.0.0.1:8000. That's the whole demo: live view with the
 landmark overlay, the current fish's numbers, a records table, a review queue you
 can correct from, and an export button.
 
+![The app grading the sample clip](docs/images/ui.png)
+
 The sample clip contains a calibration card and **no fish** — the stub detector
 doesn't look at the image, so that run exercises real calibration geometry
 against a fake animal. It exists so a fresh clone has something to point at.
+That's why the overlay above sits on a blank background and the card is the only
+real object in the frame.
+
+Set `detector.stub_mode: implausible` in `config.yaml` and the same clip
+exercises the other half of the system:
+
+![The review queue, with the failed constraints named](docs/images/ui_review.png)
+
+Trust drops to 0.00 — not because the model was unsure, landmark confidence is
+still 0.88, but because the geometry is impossible. The eye isn't between the
+snout and the operculum, the peduncle points are swapped, and the landmarks are
+degenerate. Every one of those is a named constraint, stored per record, and
+shown to the operator along with the buttons to overrule it. Catching
+confident-but-wrong is the whole reason the plausibility half exists.
 
 Batch mode, no UI:
 

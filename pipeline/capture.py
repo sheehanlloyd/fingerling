@@ -96,7 +96,7 @@ def from_video(
     Stride exists because a 30 fps video of one fish on a tray is 30 nearly
     identical frames per second, and grading every one of them fills the database
     with duplicates of the same fish. It is NOT fish tracking — this project has
-    no notion of the same fish across frames, and CLAUDE.md's scope doesn't ask
+    no notion of the same fish across frames, and the scope doesn't ask
     for one. Each frame is an independent grading event.
     """
     p = Path(path)
@@ -155,7 +155,7 @@ def open_source(
     """Work out what `spec` is and open it.
 
     A bare integer, or "webcam", means a camera. A directory means images. Any
-    other path means a video file. That covers the three sources CLAUDE.md asks
+    other path means a video file. That covers the three sources the spec asks
     for without a --source-type flag nobody would remember.
     """
     max_edge = cfg.get("capture", {}).get("max_long_edge_px", 1280)

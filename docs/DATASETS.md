@@ -209,9 +209,9 @@ all.
 
 ## What FishPhenoKey's schema would mean for the trait list
 
-Worth reading before you choose, because it changes two of the traits in CLAUDE.md.
+Worth reading before you choose, because it changes two of the traits in the spec.
 
-**Fork length is not directly available.** CLAUDE.md asks for snout tip to caudal
+**Fork length is not directly available.** The spec asks for snout tip to caudal
 fork. FishPhenoKey has "posterior end of tail fin" (the tip — that's total length)
 and "posterior end of caudal vertebrae" (the hypural plate — that's standard
 length). It has no point at the fork itself, the notch between the tail lobes.
@@ -227,7 +227,7 @@ peduncle depth exactly. Depth ratio follows from whichever length trait wins abo
 not a midline. The best midline I can build is four derived points: the snout, the
 midpoint of dorsal apex and ventral margin, the midpoint of the two peduncle
 points, and the caudal endpoint. Four points is enough to fit a line and measure
-deviation, but it's a coarser deformity proxy than CLAUDE.md implies — a fish bent
+deviation, but it's a coarser deformity proxy than the spec implies — a fish bent
 between those points won't show up. <!-- TODO: my call — accept the coarse version,
 or drop curvature to a stretch goal -->
 

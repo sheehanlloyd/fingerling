@@ -82,7 +82,7 @@ class YoloPoseDetector:
         if boxes is None or kps is None or len(boxes) == 0:
             return Landmarks.empty(source=f"yolo:{Path(self.weights).name}")
 
-        # One fish per frame. CLAUDE.md's scope is a single-station grader with
+        # One fish per frame. The scope is a single-station grader with
         # one fish under the camera; picking the most confident detection is the
         # honest version of that, and two overlapping fish is a documented
         # failure mode rather than something this silently averages.

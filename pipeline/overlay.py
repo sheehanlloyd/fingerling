@@ -2,7 +2,7 @@
 
 Lives in pipeline/ and not api/ because pipeline/ is not allowed to import api/,
 and the batch CLI wants to dump annotated frames too. It's an extra module that
-isn't in CLAUDE.md's architecture listing — logged in docs/DECISIONS.md.
+isn't in the spec's architecture listing — logged in docs/DECISIONS.md.
 
 Colour carries the one thing an operator needs at a glance: the decision. Green
 passes, red culls, amber goes to a human. Landmark dots are shaded by their own

@@ -5,7 +5,7 @@ The transport question that was sitting open in docs/DECISIONS.md is settled —
 implementation and `ws="auto"` resolves to none, so without it a WS connection is
 simply refused. The alternatives were wsproto (same job, less widely used),
 uvicorn[standard] (pulls in several more packages for things I don't need), or
-dropping to server-sent events. One package for the thing CLAUDE.md's design
+dropping to server-sent events. One package for the thing the spec's design
 actually asks for was the cheapest of those.
 
 Design notes:

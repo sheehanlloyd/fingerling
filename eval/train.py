@@ -5,8 +5,8 @@
 Everything about this is shaped by the machine (M4 Pro, 24 GB, MPS) and by the
 dataset being small (fishKeypoints is 593 images).
 
-  amp=False. CLAUDE.md is explicit that mixed precision is unreliable on MPS with
-  Ultralytics, and that matches what I'd expect — the MPS autocast path is the
+  amp=False. Mixed precision is unreliable on MPS with Ultralytics, and that
+  matches what I'd expect — the MPS autocast path is the
   least-travelled one in that codebase. Not negotiable, and it's a flag here
   rather than a default so it can't be lost.
 

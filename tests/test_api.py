@@ -110,7 +110,7 @@ def test_the_page_is_served_and_is_one_file(server):
     with urllib.request.urlopen(server + "/", timeout=5) as r:
         html = r.read().decode()
     assert "<title>fingerling</title>" in html
-    # No build step, no framework. If either appears, CLAUDE.md's scope slipped.
+    # No build step, no framework. If either appears, the scope slipped.
     assert "<script src=" not in html
     assert "react" not in html.lower()
 

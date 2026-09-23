@@ -1,7 +1,7 @@
 """Load config.yaml. That's the whole module.
 
 It lives in pipeline/ rather than at the repo root because pipeline/ has to be
-importable as a library on its own — see the note in CLAUDE.md about not
+importable as a library on its own — see the note in the spec about not
 importing api/ from here.
 """
 

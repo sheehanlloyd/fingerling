@@ -26,7 +26,7 @@ under any sane threshold on its own. A `soft` constraint is a range check on a
 proportion, where an unusual but real fish could legitimately fall outside, and
 those only cost a fraction of the score.
 
-That's a deviation from a literal reading of CLAUDE.md and it's logged in
+That's a deviation from a literal reading of the spec and it's logged in
 docs/DECISIONS.md for review. The alternative I rejected was a separate veto in
 decide.py; keeping it inside the score means there's one number to threshold and
 one place routing happens.

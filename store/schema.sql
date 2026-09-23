@@ -1,6 +1,6 @@
 -- One row per graded fish. One table, stdlib sqlite3, no ORM.
 --
--- The columns down to latency_ms_json are the schema CLAUDE.md specifies, in
+-- The columns down to latency_ms_json are the schema the spec specifies, in
 -- that order. Everything under the EXTENSIONS heading I added, and each one has
 -- a reason next to it — they're flagged rather than folded in so the difference
 -- between "the spec asked for this" and "I decided this" stays visible.
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS fish (
     human_decision          TEXT,
     latency_ms_json         TEXT    NOT NULL,   -- {stage: ms}, per-stage breakdown
 
-    -- ---- EXTENSIONS (mine, not in CLAUDE.md's list) ----
+    -- ---- EXTENSIONS (mine, not in the original list) ----
 
     -- Every trait in this project is supposed to carry an error bar. Dropping
     -- the sigmas at the storage layer would throw away the one thing that makes

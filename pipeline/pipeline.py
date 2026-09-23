@@ -8,7 +8,7 @@ stage is timed separately with `perf_counter` and the breakdown is stored per
 fish, so p50/p95 per stage is a query against real history and not a benchmark
 someone ran once on a good day (`store.db.latency_percentiles`).
 
-`pipeline/` imports nothing from `api/`. That's a rule in CLAUDE.md and it's the
+`pipeline/` imports nothing from `api/`. That's a rule in the spec and it's the
 reason this module is usable as a library: the batch CLI and the web server run
 this exact code path, so anything the UI shows, the CSV also shows.
 """
