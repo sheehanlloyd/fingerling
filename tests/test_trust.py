@@ -1,7 +1,7 @@
 """Trust and routing tests.
 
 The one that matters most is
-`test_the_implausible_stub_goes_to_review_with_named_constraints` — that's the
+`test_the_implausible_stub_goes_to_review_with_named_constraints`, which is the
 checkpoint 5 done-condition, and it's the case a confidence threshold on its own
 cannot catch, because the stub deliberately keeps its confidence high while
 returning a fish that cannot exist.
@@ -27,7 +27,7 @@ FRAME = np.zeros((720, 1280, 3), dtype=np.uint8)
 
 
 def run(lm: Landmarks, calib=None):
-    """Landmarks in, (measures, trust, decision) out — the back half of the
+    """Landmarks in, (measures, trust, decision) out, the back half of the
     pipeline, without the pipeline."""
     calib = calib if calib is not None else F.scale_calibration()
     m = measure_traits(lm, calib, MEASURE)
@@ -85,7 +85,7 @@ def test_the_implausible_stub_goes_to_review_with_named_constraints():
 
 def test_the_implausible_stub_is_still_confident_which_is_the_whole_point():
     """If this ever drops below the review threshold on confidence alone, the
-    test above stops proving anything — it would be passing for the wrong
+    test above stops proving anything. It would be passing for the wrong
     reason."""
     _, t, _ = run(stub("implausible"))
     assert t.landmark_confidence > TRUST.review_below
@@ -226,7 +226,7 @@ def test_the_deformed_stub_is_culled():
 
 def test_a_bent_but_untrusted_fish_reviews_rather_than_culls():
     """The ordering that matters. A curvature reading off landmarks you don't
-    believe is evidence of a bad detection, not of a deformed fish — culling on
+    believe is evidence of a bad detection, not of a deformed fish, so culling on
     it would destroy healthy stock because the model had a bad frame."""
     lm = F.place(bend_mm=25.0, confidence=0.25)
     m, t, d = run(lm)
@@ -249,7 +249,7 @@ def test_a_trusted_fish_with_no_curvature_reviews_rather_than_passes():
 def test_a_detector_that_cannot_measure_curvature_does_not_review_every_fish():
     """The four-point trained model has no midline landmarks, so curvature is
     None on every fish. Under the default rule that put 25 of 25 real fish in the
-    review queue at a median trust of 0.96 — a queue holding all the stock.
+    review queue at a median trust of 0.96, a queue holding all the stock.
 
     With assess_deformity false the same fish passes on trust alone.
     """
@@ -267,7 +267,7 @@ def test_a_detector_that_cannot_measure_curvature_does_not_review_every_fish():
 def test_not_assessing_deformity_is_stated_on_every_record_it_affects():
     """The switch must not be a silent way to turn culling off. A PASS produced
     without a curvature measurement has to say so, or someone reads it as
-    'checked for deformity and fine' — which is exactly the confidently-wrong
+    'checked for deformity and fine', which is exactly the confidently-wrong
     output this whole project exists to avoid."""
     lm = F.place(
         confidence=0.95,

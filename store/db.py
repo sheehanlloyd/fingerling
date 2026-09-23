@@ -1,6 +1,6 @@
 """SQLite, stdlib only, one table.
 
-No ORM on purpose — there's one table and about six queries, and an ORM would be
+No ORM on purpose. There's one table and about six queries, and an ORM would be
 more code than the queries it replaced.
 
 This module is the only place that knows SQL. Everything else hands it a
@@ -36,7 +36,7 @@ COLUMNS = (
 
 
 # One lock per connection. FastAPI runs `def` endpoints in a threadpool, so the
-# same connection legitimately gets used from several threads — and sqlite3's
+# same connection legitimately gets used from several threads, and sqlite3's
 # default `check_same_thread=True` turns that into a hard error. A test caught it
 # the first time the API served a request. Turning the check off without adding a
 # lock would just trade a loud failure for interleaved cursors, so: check off,
@@ -171,7 +171,7 @@ def constraint_counts(conn: sqlite3.Connection) -> dict[str, int]:
     This exists because I got the number wrong by hand. `failed_constraints_json`
     is a list per row, and counting the lists as whole values buckets a row that
     failed three constraints under "three-constraints-at-once" and a row that
-    failed none under the empty list — so the per-constraint totals come out
+    failed none under the empty list, so the per-constraint totals come out
     low and there's a mystery empty bucket. Flattening is the only correct way
     to read it, so it lives here rather than in whatever one-liner is to hand.
 
@@ -218,7 +218,7 @@ def latency_percentiles(conn: sqlite3.Connection) -> dict[str, dict[str, float]]
             "n": len(vals),
             "p50": statistics.median(vals),
             # Nearest-rank p95. With fewer than 20 samples this is just the max,
-            # which is the honest answer — you can't have a p95 from 5 numbers.
+            # which is the honest answer, because you can't have a p95 from 5 numbers.
             "p95": vals[min(len(vals) - 1, int(round(0.95 * len(vals))) - 1 if len(vals) > 1 else 0)],
             "mean": sum(vals) / len(vals),
         }

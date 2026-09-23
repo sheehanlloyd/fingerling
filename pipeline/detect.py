@@ -2,12 +2,12 @@
 
 Two backends behind one interface:
 
-  StubDetector — a parametric fish, no model, no weights. It exists so every
+  StubDetector, a parametric fish, no model, no weights. It exists so every
   other stage in this pipeline could be built and tested before a model existed,
   and so the failure modes the trust layer is supposed to catch can be produced
   on demand instead of waited for.
 
-  YoloPoseDetector — the real thing, in pipeline/detect_yolo.py. Imported lazily
+  YoloPoseDetector, the real thing, in pipeline/detect_yolo.py. Imported lazily
   so the app runs with none of the training dependencies installed.
 
 Which one you get is `detector.backend` in config.yaml. It defaults to stub, and
@@ -15,7 +15,7 @@ it falls back to stub with a loud note if the real weights aren't on disk, rathe
 than crashing a grading station because a file moved.
 
 The stub's canonical fish below is *made up*. It's a plausible salmonid in
-proportion and nothing more — no dataset was measured to produce it. Every number
+proportion and nothing more. No dataset was measured to produce it. Every number
 that comes out of the stub is therefore about the plumbing, never about fish.
 """
 
@@ -128,7 +128,7 @@ class StubDetector:
 
         # `deformed` is just `normal` with a bowed midline. 0.10 of body length
         # is comfortably over the placeholder cull threshold of 0.06, which is
-        # the only reason that number is what it is — it exists to make the CULL
+        # the only reason that number is what it is. It exists to make the CULL
         # branch reachable, not because any real fish bends by 10%.
         bend = s.bend if s.mode != "deformed" else max(s.bend, 0.10)
         pts = _fish_points(length_px, angle, centre, bend)

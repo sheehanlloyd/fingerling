@@ -1,5 +1,5 @@
 # Pinned to what actually resolved on Python 3.14 (macOS arm64), 2026-08-17.
-# Direct dependencies only — everything else in the venv is transitive.
+# Direct dependencies only. Everything else in the venv is transitive.
 # Adding to this list is a conversation, not a commit.
 opencv-python==5.0.0.93
 fastapi==0.141.1

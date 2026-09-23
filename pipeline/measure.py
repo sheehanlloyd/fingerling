@@ -2,7 +2,7 @@
 
 Everything here is first-order propagation of independent Gaussian errors. That
 approximation is stated in full in `THE UNCERTAINTY MODEL` below, because an
-error bar whose assumptions nobody wrote down is worse than no error bar — it
+error bar whose assumptions nobody wrote down is worse than no error bar, because it
 looks like knowledge.
 
 Two structural choices worth knowing before you read the code:
@@ -49,7 +49,7 @@ from pipeline.landmarks import TRAIT_REQUIREMENTS, Landmarks, midline_points
 # 3. For a distance d = |b - a|, only the error component ALONG the a-b axis
 #    changes d to first order; the perpendicular component is second-order small.
 #    So sigma_d = sqrt(sigma_a^2 + sigma_b^2). This is a first-order expansion
-#    and it degrades when sigma is comparable to d — i.e. for very short spans
+#    and it degrades when sigma is comparable to d, i.e. for very short spans
 #    like the peduncle on a small fish.
 #
 # 4. Calibration contributes a RELATIVE scale error, not an absolute one:
@@ -61,7 +61,7 @@ from pipeline.landmarks import TRAIT_REQUIREMENTS, Landmarks, midline_points
 #    ASSUMED corner error from config stands in. That assumed value is a guess.
 #
 # 5. Scale error CANCELS in a ratio. depth_ratio and curvature_index therefore
-#    carry no calibration term at all — only the landmark term. That is the
+#    carry no calibration term at all, only the landmark term. That is the
 #    entire argument for preferring ratios, and it's why the deformity trait is
 #    the dimensionless one.
 #
@@ -168,7 +168,7 @@ def _distance_px(lm: Landmarks, a: str, b: str, s: MeasureSettings) -> Quantity:
 def _target_span_px(calib: Calibration) -> float | None:
     """A single length scale for the calibration target, in pixels.
 
-    sqrt of the corner quad's area — insensitive to which way round the corners
+    sqrt of the corner quad's area, insensitive to which way round the corners
     are and to the target's aspect ratio, both of which vary.
     """
     if calib.corners_px is None:
@@ -198,7 +198,7 @@ def relative_scale_sigma(calib: Calibration, s: MeasureSettings) -> float:
 
 def _to_mm(q_px: Quantity, calib: Calibration, s: MeasureSettings) -> Quantity | None:
     """Convert a pixel distance to millimetres by actually mapping the endpoints
-    is not possible here — we only kept the scalar — so this uses mm_per_px.
+    is not possible here (we only kept the scalar) so this uses mm_per_px.
 
     That's an approximation under perspective: mm_per_px varies across the frame.
     It's fine at low obliquity, which is the only regime `reliable` allows, and
@@ -240,7 +240,7 @@ def _distance_mm(
 def _ratio(num: Quantity, den: Quantity) -> Quantity | None:
     """Ratio of two quantities in the SAME unit, so the scale factor cancels.
 
-    Both inputs must be pixel quantities — that's deliberate. Taking the ratio in
+    Both inputs must be pixel quantities, and that's deliberate. Taking the ratio in
     pixels means no calibration term enters at all, which is exactly the property
     that makes the ratio survive a bad calibration.
     """
@@ -257,7 +257,7 @@ def curvature(lm: Landmarks, s: MeasureSettings) -> Quantity | None:
 
     Straight fish score near zero. What this MISSES: the midline is four derived
     points, so a fish bent between two of them is invisible to this. It's a
-    coarse deformity proxy and calling it anything stronger would be a lie —
+    coarse deformity proxy and calling it anything stronger would be a lie,
     see docs/DATASETS.md.
     """
     mid = midline_points(lm)
@@ -298,7 +298,7 @@ def condition_factor(fork_mm: Quantity, weight_g: float) -> Quantity:
     The centimetre convention is what makes a healthy fish score near 1.0; do it
     in millimetres and every number comes out a thousand times smaller and
     nobody recognises it. Weight is taken as exact because it's typed in by hand
-    and I have no scale spec to put an error bar on — so this uncertainty is the
+    and I have no scale spec to put an error bar on, so this uncertainty is the
     length contribution only, and it's an underestimate by however bad the scale
     is.
     """
@@ -384,7 +384,7 @@ def measure_traits(
         if out.peduncle_depth_mm is None:
             out.unavailable["peduncle_depth_mm"] = no_mm
 
-    # Ratio is taken in pixels on purpose — see _ratio. No calibration needed.
+    # Ratio is taken in pixels on purpose, see _ratio. No calibration needed.
     if check("depth_ratio") and depth_px is not None and fork_px is not None:
         out.depth_ratio = _ratio(depth_px, fork_px)
 

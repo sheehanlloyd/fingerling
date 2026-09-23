@@ -8,8 +8,8 @@ it would destroy healthy stock on the strength of a model error.
 So an untrusted fish goes to a human no matter what its curvature says.
 
 The second thing here is `assess_deformity`, and it exists because of a real
-result rather than a hypothetical. The trained model emits four landmarks —
-snout, caudal fork, dorsal origin, eye — because that is what the only suitable
+result rather than a hypothetical. The trained model emits four landmarks:
+snout, caudal fork, dorsal origin, eye, because that is what the only suitable
 public dataset annotates. None of those build a midline, so `curvature_index` is
 None on every single fish. With the original rule ("trusted but no curvature ->
 REVIEW") the first real run put all 25 of 25 fish in the review queue at a median

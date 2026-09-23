@@ -7,7 +7,7 @@ STATUS, read this before trusting anything here. As of the session that wrote it
 this adapter has been exercised against a real ultralytics pose model and a real
 `Results` object, so the parsing is not guesswork. It has NOT been run against a
 model trained on fish, because the dataset download is blocked on a Roboflow API
-key — see docs/DECISIONS.md. So: the plumbing is tested, the model is not
+key, see docs/DECISIONS.md. So: the plumbing is tested, the model is not
 trained, and `detector.backend` in config.yaml still defaults to `stub`.
 
 The one piece of real judgement in here is the keypoint remap. A model trained on
@@ -113,7 +113,7 @@ class YoloPoseDetector:
             c = float(kconf[model_idx]) if np.isfinite(kconf[model_idx]) else 1.0
             x, y = float(xy[model_idx][0]), float(xy[model_idx][1])
             # Ultralytics writes (0, 0) for a keypoint it did not place, which is
-            # a real coordinate in image space — the top-left corner. Reading one
+            # a real coordinate in image space, the top-left corner. Reading one
             # as a landmark puts a snout in the corner of the frame with full
             # confidence, so it's treated as absent.
             if c < self.kpt_conf_min or (x == 0.0 and y == 0.0):

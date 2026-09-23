@@ -19,7 +19,7 @@ calibration:
   aruco:
     # OpenCV predefined dictionary name. DICT_4X4_50 has the largest modules for a
     # given physical marker size, so it survives being small on a phone screen.
-    # See docs/DECISIONS.md — this was my default pick, not a measured one.
+    # See docs/DECISIONS.md. This was my default pick, not a measured one.
     dictionary: DICT_4X4_50
     # Physical side length of the printed/displayed marker's outer black square, mm.
     # null until you compute it from your phone's PPI. calibrate.py refuses to solve
@@ -34,13 +34,13 @@ calibration:
     # A detected quad is rejected as "not a card" if its aspect ratio is further
     # than this (fractional) from 85.60/53.98. Loose enough to survive perspective.
     aspect_tolerance: 0.18
-    # Contour area floor as a fraction of frame area — filters specks.
+    # Contour area floor as a fraction of frame area. Filters specks.
     min_area_frac: 0.002
 
   # PLACEHOLDER. RMS reprojection residual, in pixels, above which the frame's
   # calibration is called bad and every millimetre figure from it is suspect.
   # Real value comes from Phase 3 validation against known objects.
-  # Only meaningful for the card target — see the long note at the top of
+  # Only meaningful for the card target. See the long note at the top of
   # pipeline/calibrate.py for why a single ArUco marker can't produce one.
   max_reprojection_residual_px: 2.0
 
@@ -48,7 +48,7 @@ calibration:
   # flat-on (in-plane rotation still scores 1.0); bigger means more tilt.
   #
   # eval/validate_mm swept a synthetic scene from obliquity 1.00 to 1.71.
-  # Measurement accuracy does NOT degrade with tilt — max error stayed under
+  # Measurement accuracy does NOT degrade with tilt. Max error stayed under
   # 0.15 mm across that whole range, because a homography undoes perspective
   # properly. What fails is DETECTION: past about 1.43 a foreshortened coin
   # stops being round enough to find, and past 1.71 the card itself isn't found.
@@ -78,14 +78,14 @@ decide:
   # the trained model: it emits four landmarks (snout, caudal fork, dorsal
   # origin, eye) because that is all the public dataset annotates, so curvature
   # is None on every fish. Leave this true with that model and 100% of the stock
-  # lands in the review queue — measured, not guessed: 25 of 25 on the first run.
+  # lands in the review queue. Measured, not guessed: 25 of 25 on the first run.
   #
   # Setting it false does not disable culling silently. Every decision made
   # under it carries a "DEFORMITY NOT ASSESSED" reason on the record.
   assess_deformity: true
 
 plausibility:
-  # PLACEHOLDER ranges. Sanity bounds on dimensionless body proportions — these
+  # PLACEHOLDER ranges. Sanity bounds on dimensionless body proportions. These
   # catch confident-but-anatomically-nonsense predictions. Numbers are eyeballed
   # from what a healthy fish roughly looks like, not fitted to any dataset.
   depth_ratio_min: 0.12
@@ -111,14 +111,14 @@ plausibility:
 measure:
   # PLACEHOLDER, all three. These turn a model confidence into a positional
   # standard deviation in pixels, and nobody has measured what a confidence of
-  # 0.7 is actually worth on this model — there is no trained model yet. The
+  # 0.7 is actually worth on this model, because there is no trained model yet. The
   # shape of the mapping is a guess; only the ordering it produces means
   # anything today. Phase 2 can fit these from a validation split.
   sigma_at_conf1_px: 0.8   # positional sigma at confidence 1.0
   sigma_at_conf0_px: 6.0   # positional sigma at confidence 0.0
 
   # PLACEHOLDER. Assumed calibration-target corner error, in pixels, used only
-  # where a real residual isn't available (the ArUco path — see the note at the
+  # where a real residual isn't available (the ArUco path, see the note at the
   # top of pipeline/calibrate.py about why a 4-point solve can't produce one).
   assumed_corner_error_px: 0.5
 
@@ -134,7 +134,7 @@ detector:
 
   # The real model's keypoint order, in ITS order; detect_yolo.py builds the
   # permutation onto SCHEMA. The Fish Measurement export ships no keypoint names
-  # at all — only `kpt_shape: [4, 3]` — so these four were read off the rendered
+  # at all, only `kpt_shape: [4, 3]`, so these four were read off the rendered
   # annotations, not off a schema file. docs/DATASETS.md has the pictures.
   keypoint_order:
     - snout_tip      # model kp 0
@@ -155,7 +155,7 @@ live:
   # What the web app grades when it starts. Same spec the batch CLI takes: a
   # video file, a directory of images, a camera index, or the word "webcam".
   # It defaults to the synthetic sample clip so a fresh clone has something to
-  # show — `python -m cli.make_sample` writes it. There are no fish in it.
+  # show. `python -m cli.make_sample` writes it. There are no fish in it.
   source: data/sample
   # Frames per second the live loop grades at. Low on purpose: this is one
   # operator looking at one tray, not a video pipeline.

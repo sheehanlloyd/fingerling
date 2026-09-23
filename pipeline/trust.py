@@ -2,11 +2,11 @@
 
 Two signals, and the spec is right that they have to be independent:
 
-  Landmark confidence — what the model says about itself. Cheap, and useless
+  Landmark confidence, what the model says about itself. Cheap, and useless
   exactly when it matters, because the dangerous failure is a model that is
   confidently wrong.
 
-  Anatomical plausibility — geometry that doesn't involve the model at all. An
+  Anatomical plausibility, geometry that doesn't involve the model at all. An
   eye cannot be behind the gill cover. The tail cannot be in front of the dorsal
   fin. These are facts about fish, and a prediction that violates one is wrong
   no matter how high its confidence was.
@@ -17,7 +17,7 @@ I built this as a straight weighted mean first and it doesn't work. Take the
 stub's `implausible` mode: confidence 0.9, three of ten constraints failing.
 Fraction-passed is 0.7, the blend is 0.5*0.9 + 0.5*0.7 = 0.80, and a fish with
 its peduncle upside down sails through as a PASS. Averaging a probability with a
-contradiction is a category error — one of those quantities can be 0.7 and the
+contradiction is a category error. One of those quantities can be 0.7 and the
 other cannot.
 
 So constraints are tagged. A `hard` constraint is a geometric impossibility and
@@ -35,7 +35,7 @@ AND THE BLEND IS GEOMETRIC, NOT ARITHMETIC
 
 Second thing a test caught. With arithmetic weights of 0.5, clean geometry
 contributes 0.5 to the total by itself, so trust has a floor of 0.5 no matter how
-unsure the model is — the stub's low_confidence mode scored 0.625 and passed. A
+unsure the model is. The stub's low_confidence mode scored 0.625 and passed. A
 weighted geometric mean says the thing I actually mean: both signals are
 necessary conditions, and either one near zero takes the product with it.
 
@@ -67,7 +67,7 @@ class TrustSettings:
     peduncle_to_depth_ratio_max: float = 0.85
     min_landmark_separation_px: float = 2.0
     # Measured off the 245 ground-truth annotations in Fish Measurement, then
-    # widened. These are NOT placeholders — see docs/DATASETS.md for the
+    # widened. These are NOT placeholders, see docs/DATASETS.md for the
     # distributions they came from.
     eye_axial_min: float = 0.02
     eye_axial_max: float = 0.25
@@ -294,7 +294,7 @@ def c_dorsal_apex_outside_body(lm, f, m, s) -> ConstraintResult:
 
 def c_landmarks_not_degenerate(lm, f, m, s) -> ConstraintResult:
     """No two distinct landmarks on top of each other. A collapsed pair is a
-    classic heatmap failure — two joints share one peak — and it silently
+    classic heatmap failure (two joints share one peak) and it silently
     produces a zero-length trait."""
     name, kind = "landmarks_not_degenerate", "hard"
     names = [n for n in lm.schema if lm.has(n)]
@@ -360,12 +360,12 @@ def c_peduncle_to_depth_in_range(lm, f, m, s) -> ConstraintResult:
 # plausibility had almost nothing to say. These three are checkable with
 # snout_tip, caudal_fork, dorsal_origin and eye_centre, which is all the trained
 # model emits. Their ranges were measured off the dataset's own ground truth
-# rather than guessed — that work is in docs/DATASETS.md.
+# rather than guessed, and that work is in docs/DATASETS.md.
 
 
 def c_eye_anterior_to_dorsal_origin(lm, f, m, s) -> ConstraintResult:
     """The eye sits in the head; the dorsal fin does not. If the eye computes as
-    posterior to the dorsal origin, the body axis is reversed — which is exactly
+    posterior to the dorsal origin, the body axis is reversed, which is exactly
     the failure a snout/tail swap produces.
 
     This fires on 1 of the dataset's own 245 annotations, and that annotation is
@@ -479,8 +479,8 @@ def score_trust(
     # WEIGHTED GEOMETRIC mean, not arithmetic. I wrote it arithmetic first and a
     # test caught the problem: with weights of 0.5, perfect geometry contributes
     # 0.5 to the total on its own, so trust can never fall below 0.5 however
-    # unsure the model is. The stub's low_confidence mode — mean confidence about
-    # 0.25, geometry flawless — scored 0.625 and passed. A detection the model
+    # unsure the model is. The stub's low_confidence mode (mean confidence about
+    # 0.25, geometry flawless) scored 0.625 and passed. A detection the model
     # barely believes has to be able to reach a human.
     #
     # A geometric mean says what I actually mean: these are two necessary

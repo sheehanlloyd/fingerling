@@ -12,7 +12,7 @@ nonsense.
 Tolerances: the scenes are rendered and re-detected through pixel quantisation, so
 the errors below aren't zero. Where I use a loose tolerance it's because the
 target is small relative to the distance being measured and corner error gets
-amplified — the extrapolation factor is stated in the test.
+amplified, and the extrapolation factor is stated in the test.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from tests import synthetic as syn
 
 MARKER_MM = 40.0
 
-# A 200 mm span lying in the board plane, off to the side of the target — roughly
+# A 200 mm span lying in the board plane, off to the side of the target, roughly
 # where a fish would sit next to the calibration object. Measured from a 40 mm
 # marker, that's a 5x extrapolation, so corner error gets multiplied by 5.
 ARUCO_PROBE = np.array([[-80.0, 60.0], [120.0, 60.0]])
@@ -134,7 +134,7 @@ def test_aruco_rotation_does_not_raise_obliquity():
 
 
 def test_aruco_under_perspective_skew_still_measures_the_span():
-    """Moderate tilt. The homography has real work to do here — an affine-only
+    """Moderate tilt. The homography has real work to do here. An affine-only
     solve would be visibly wrong."""
     q = syn.foreshorten(syn.quad(700, 450, 420, 420), top_scale=0.72)
     frame, H_gt = syn.aruco_scene(q, MARKER_MM)
@@ -148,7 +148,7 @@ def test_aruco_under_perspective_skew_still_measures_the_span():
 def test_marker_length_scales_every_measurement_linearly():
     """Tell the code the marker is twice as big and every millimetre figure must
     exactly double. This is the sharpest check I have that the physical scale
-    enters in one place and enters correctly — a hardcoded constant or a squared
+    enters in one place and enters correctly. A hardcoded constant or a squared
     scale factor anywhere in the chain fails this."""
     q = syn.quad(700, 450, 360, 360)
     frame, H_gt = syn.aruco_scene(q, MARKER_MM)
@@ -245,7 +245,7 @@ def test_flat_card_outline_residual_is_small():
 
 
 def test_bowed_card_produces_a_large_residual_and_is_rejected():
-    """A card that isn't flat — or a lens that bends straight lines — still gives
+    """A card that isn't flat, or a lens that bends straight lines, still gives
     four corners that solve a homography perfectly well. The corner-only residual
     cannot see this. The outline residual can, and that's the reason it exists.
 
@@ -258,14 +258,14 @@ def test_bowed_card_produces_a_large_residual_and_is_rejected():
 
     So the detection limit sits somewhere around 1.2 mm of bow. That's the real
     sensitivity of this check and it's worth writing down rather than asserting
-    some ratio — a card bowed by less than about a millimetre goes through, and
+    some ratio. A card bowed by less than about a millimetre goes through, and
     its measurements are wrong by however much that costs.
     """
     q = syn.quad(700, 450, 640, 640 * 53.98 / 85.60)
     flat = calibrate(syn.card_scene(q)[0], card_settings())
     bowed = calibrate(syn.card_scene(q, bow_mm=1.5)[0], card_settings())
 
-    assert bowed.calibrated is True, "it still finds a quad — that's the problem"
+    assert bowed.calibrated is True, "it still finds a quad, and that's the problem"
     assert flat.reliable is True
     assert bowed.residual_px > flat.max_residual_px
     assert bowed.reliable is False
@@ -308,7 +308,7 @@ def test_tilt_amplifies_corner_noise_and_that_is_the_point_of_obliquity():
     """Why a steeply tilted target is dangerous, demonstrated rather than asserted.
 
     On perfectly rendered synthetic frames an edge-on marker actually measures
-    fine — the homography is exact, so exact corners give exact millimetres. That
+    fine, because the homography is exact, so exact corners give exact millimetres. That
     is not what happens with a real camera. Real corner estimates are off by a
     fraction of a pixel, and a tilted homography multiplies that error far more
     than a flat one does.
@@ -320,7 +320,7 @@ def test_tilt_amplifies_corner_noise_and_that_is_the_point_of_obliquity():
 
     Both quads start from the same 700 px square so the comparison is about tilt
     and not about one target simply being bigger in frame. The probe runs across
-    the far side of the target, where foreshortening is worst — measured
+    the far side of the target, where foreshortening is worst, measured
     amplification there is around 7x, and it's about 3x on the near side. I assert
     the weaker bound so the test isn't pinned to one random seed.
     """
@@ -398,14 +398,14 @@ def test_the_real_config_file_parses_into_settings():
 
     assert settings.card_width_mm == 85.60 and settings.card_height_mm == 53.98
     assert settings.marker_length_mm is None, (
-        "config.yaml ships with no marker size on purpose — it depends on my "
+        "config.yaml ships with no marker size on purpose, it depends on my "
         "phone's PPI and I haven't measured it"
     )
 
 
 def test_card_detector_rejects_a_square_that_is_not_card_shaped():
     """The aspect-ratio filter is the only thing separating a card from any other
-    bright rectangle. A square must not be accepted as a card — if it were, the
+    bright rectangle. A square must not be accepted as a card. If it were, the
     scale would be silently wrong by a factor of 1.586."""
     q = syn.quad(700, 450, 500, 500)
     frame, _ = syn.card_scene(q, width_mm=85.60, height_mm=85.60)

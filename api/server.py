@@ -4,7 +4,7 @@
     # or: uvicorn api.server:app
 
 Serves one HTML file, one WebSocket, and the REST endpoints in routes.py. The
-pipeline it runs is the same Pipeline the batch CLI runs — there is no separate
+pipeline it runs is the same Pipeline the batch CLI runs, and there is no separate
 "live" code path, so anything the browser shows also shows up in a CSV.
 """
 

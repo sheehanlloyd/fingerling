@@ -8,7 +8,7 @@ credit-card-shaped calibration target that drifts and rotates slightly, which is
 enough for the calibration stage to do real work.
 
 Be clear about what this is NOT: there is no fish in these frames. The stub
-detector doesn't look at the image at all — it draws a made-up fish wherever it
+detector doesn't look at the image at all. It draws a made-up fish wherever it
 likes. So a batch run over this clip exercises capture, calibration, measurement,
 trust, routing, storage and timing end to end with REAL calibration geometry and
 a FAKE animal. Every millimetre it reports is a millimetre of the card's plane,
@@ -78,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
         writer.release()
 
     print(f"wrote {n} frames to {out}" + (f" and {args.video}" if args.video else ""))
-    print("no fish in these frames — see the docstring in cli/make_sample.py")
+    print("no fish in these frames, see the docstring in cli/make_sample.py")
     return 0
 
 

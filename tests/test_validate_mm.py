@@ -7,8 +7,8 @@ no lens, no sensor noise, no coin thickness, no lighting. That's what the real
 shots are for, and no amount of synthetic testing substitutes for them.
 
 The tolerance below is 0.25 mm and it is deliberately tight. The boundary bias
-this harness found in its own segmentation — thresholding cut ~0.41 mm inside
-every object — would fail these tests. That's the point of picking a number that
+this harness found in its own segmentation (thresholding cut ~0.41 mm inside
+every object) would fail these tests. That's the point of picking a number that
 a broken version can't sneak under.
 """
 
@@ -29,7 +29,7 @@ from pipeline.calibrate import CalibrationSettings, calibrate
 from tests.synthetic import card_and_coins_scene, foreshorten, quad, rotate
 
 # Board-plane layout: (centre_x_mm, centre_y_mm, true_diameter_mm), all below the
-# card so they don't interfere with detecting it. Spaced so they never touch —
+# card so they don't interfere with detecting it. Spaced so they never touch,
 # two coins sharing a contour is a detection bug, not a measurement one.
 COINS = [(15.0, 95.0, 26.50), (52.0, 95.0, 28.00), (88.0, 95.0, 23.88)]
 TRUE_MM = sorted(c[2] for c in COINS)
@@ -69,7 +69,7 @@ def test_in_plane_rotation_is_a_rigid_motion_and_must_change_nothing():
 
 def test_perspective_tilt_is_undone_by_the_homography():
     """A tilted board still measures right. This is the entire argument for
-    solving a homography rather than dividing by a pixels-per-mm constant — a
+    solving a homography rather than dividing by a pixels-per-mm constant. A
     scale factor cannot undo foreshortening, and a homography can."""
     _, calib, measured = measure(foreshorten(CARD_QUAD, 0.85))
     assert calib.obliquity > 1.2, "scene isn't actually tilted"
@@ -83,7 +83,7 @@ def test_a_naive_pixels_per_mm_would_fail_the_tilted_case():
 
     Take the card's mean pixel width, divide it into 85.60 mm, and apply that one
     scale factor to a tilted coin the way a naive implementation would. It should
-    be visibly wrong — otherwise the tilted test proves nothing, because a
+    be visibly wrong, because otherwise the tilted test proves nothing: a
     constant would have passed it too.
     """
     frame, calib, _ = measure(foreshorten(CARD_QUAD, 0.85))
@@ -112,7 +112,7 @@ def test_objects_at_different_brightnesses_are_all_found():
 
     The detector used to threshold once with Otsu. Otsu picks a single level and
     assumes the image is bimodal; my first real shot had carpet at 80, one coin
-    at 136, another at 187 and the card at 227, and Otsu landed on 146 — exactly
+    at 136, another at 187 and the card at 227, and Otsu landed on 146, exactly
     between the two coins. One went to the background, the other merged with the
     card, and it reported zero objects.
 
@@ -139,7 +139,7 @@ def test_a_ragged_outline_does_not_lose_the_object():
 
     Perimeter-based circularity is exactly the wrong statistic, because noise
     inflates perimeter fast. A real coin whose edge blended into carpet scored
-    0.697 circularity and was discarded — while its area was 133,972 px^2
+    0.697 circularity and was discarded, while its area was 133,972 px^2
     against an expected 136,000. The shape was fine; the outline was fuzzy.
     """
     import cv2
@@ -223,7 +223,7 @@ def test_rank_matching_warns_when_two_objects_are_too_close_in_size():
 
 def test_the_summary_separates_bias_from_scatter():
     """Bias is the systematic part and scatter is the random part, and they need
-    different fixes — a bias survives averaging and scatter doesn't. A summary
+    different fixes: a bias survives averaging and scatter doesn't. A summary
     that reported only MAE would hide which one you have."""
     from eval.validate_mm import ObjectMeasurement
 

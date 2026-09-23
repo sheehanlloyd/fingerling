@@ -56,7 +56,7 @@
     <p class="muted" id="cal"></p>
 
     <h2>Current fish</h2>
-    <dl id="current"><dt>waiting</dt><dd>—</dd></dl>
+    <dl id="current"><dt>waiting</dt><dd>-</dd></dl>
   </div>
 
   <div class="col">
@@ -92,12 +92,12 @@
 // ---------------------------------------------------------------------------
 
 const $ = (id) => document.getElementById(id);
-const fmt = (v, d = 1) => (v === null || v === undefined) ? "—" : Number(v).toFixed(d);
+const fmt = (v, d = 1) => (v === null || v === undefined) ? "-" : Number(v).toFixed(d);
 
 function pm(value, sigma, digits = 1) {
   // A measurement with no error bar next to it is the thing this whole project
   // is trying not to produce, so the UI never shows one without the other.
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "-";
   const s = (sigma === null || sigma === undefined) ? "" : ` ± ${Number(sigma).toFixed(digits)}`;
   return `${Number(value).toFixed(digits)}${s}`;
 }
@@ -114,7 +114,7 @@ function connect() {
   ws = new WebSocket(`${proto}://${location.host}/ws`);
   ws.onopen = () => { $("banner").textContent = "connected"; };
   ws.onclose = () => {
-    $("banner").textContent = "disconnected — retrying in 2s";
+    $("banner").textContent = "disconnected, retrying in 2s";
     setTimeout(connect, 2000);
   };
   ws.onmessage = (ev) => {
@@ -153,10 +153,10 @@ function showCurrent(r) {
     ["fork length", r.fork_length_mm === null
         ? '<span class="muted">uncalibrated</span>'
         : pm(r.fork_length_mm, r.fork_length_mm_sigma) + " mm"],
-    ["total length", r.total_length_mm === null ? "—" : fmt(r.total_length_mm) + " mm"],
-    ["body depth", r.body_depth_mm === null ? "—" : pm(r.body_depth_mm, r.body_depth_mm_sigma) + " mm"],
+    ["total length", r.total_length_mm === null ? "-" : fmt(r.total_length_mm) + " mm"],
+    ["body depth", r.body_depth_mm === null ? "-" : pm(r.body_depth_mm, r.body_depth_mm_sigma) + " mm"],
     ["depth ratio", pm(r.depth_ratio, r.depth_ratio_sigma, 3)],
-    ["peduncle depth", r.peduncle_depth_mm === null ? "—" : pm(r.peduncle_depth_mm, r.peduncle_depth_mm_sigma) + " mm"],
+    ["peduncle depth", r.peduncle_depth_mm === null ? "-" : pm(r.peduncle_depth_mm, r.peduncle_depth_mm_sigma) + " mm"],
     ["curvature", pm(r.curvature_index, r.curvature_index_sigma, 4)],
     ["condition factor", r.condition_factor === null
         ? '<span class="muted">no weight entered</span>' : fmt(r.condition_factor, 2)],
@@ -169,7 +169,7 @@ function showCurrent(r) {
     ? `calibrated on <b>${r.calibration_target}</b> · obliquity ${fmt(r.calibration_obliquity, 2)}` +
       ` · residual ${r.calibration_residual === null ? "n/a" : fmt(r.calibration_residual, 2) + " px"}` +
       (r.calibration_reliable ? "" : ' · <span class="bad">view is too oblique to trust</span>')
-    : `<span class="bad">not calibrated</span> — ${r.calibration_reason || "no target"}; ` +
+    : `<span class="bad">not calibrated</span>: ${r.calibration_reason || "no target"}; ` +
       `millimetres are withheld, ratios still valid`;
 }
 

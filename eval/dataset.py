@@ -5,7 +5,7 @@ Two things live here.
 `fetch_roboflow` is the real path. It is written and it does not work tonight,
 because it needs a ROBOFLOW_API_KEY and there isn't one in the environment.
 Creating an account to get one is off the table, so this function exists ready to
-run the moment a key shows up. Nothing about it is speculative — the endpoints
+run the moment a key shows up. Nothing about it is speculative. The endpoints
 are documented and the code returns a clear error rather than a partial download.
 
 `make_synthetic` writes a YOLO-pose dataset of geometric fish. It exists for one
@@ -41,7 +41,7 @@ from pipeline.landmarks import SCHEMA
 
 # Fish Measurement, by Fish Count. One salmonid parr per frame in a tray, four
 # keypoints, CC BY 4.0. NOT fishKeypoints, which was the checkpoint 1 pick and
-# turned out to be aerial drone footage of wild schools — see docs/DATASETS.md.
+# turned out to be aerial drone footage of wild schools, see docs/DATASETS.md.
 ROBOFLOW_WORKSPACE = "fish-count"
 ROBOFLOW_PROJECT = "fish-measurement-z2ois"
 
@@ -91,7 +91,7 @@ def fetch_roboflow(
     versions = meta.get("versions") or []
     if version is None:
         # Roboflow returns versions newest-first. The original code took
-        # versions[-1], which is the OLDEST — v1, 55 images, and no generated
+        # versions[-1], which is the OLDEST (v1, 55 images) and no generated
         # export at all, which is why this failed with {'progress': 0} the first
         # time it was ever run for real. Pick the newest version that has
         # finished generating, and say which one out loud.
@@ -138,7 +138,7 @@ def fetch_roboflow(
     zip_path.unlink()
 
     print(f"downloaded {workspace}/{project} v{version} to {out}")
-    print("NEXT: read the keypoint schema before writing any measurement code —")
+    print("NEXT: read the keypoint schema before writing any measurement code:")
     print("      docs/DATASETS.md has the gap analysis this has to be checked against.")
     return out
 
@@ -147,7 +147,7 @@ def describe_schema(dataset_dir: str | Path) -> dict[str, Any]:
     """Read whatever a YOLO-pose export says about its keypoints.
 
     The whole point of checkpoint 1 is not assuming. This prints what the export
-    actually declares — keypoint count, names if it has them, class names — so
+    actually declares: keypoint count, names if it has them, class names, so
     the schema in pipeline/landmarks.py can be checked against it rather than
     hoped at.
     """
@@ -350,7 +350,7 @@ def make_synthetic(
         "names": {0: "fish"},
         "kpt_shape": [len(SCHEMA), 3],
         # Identity. A horizontal flip of a fish in lateral view maps snout to
-        # tail and there is no permutation that fixes that — see the module
+        # tail and there is no permutation that fixes that, see the module
         # docstring. eval/train.py also sets fliplr=0.0.
         "flip_idx": list(range(len(SCHEMA))),
         "kpt_names": list(SCHEMA),
@@ -373,7 +373,7 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--regroup", metavar="DATASET_DIR",
                    help="re-split a downloaded dataset by SOURCE PHOTOGRAPH. The published "
                         "Roboflow split is over augmented files, so copies of one photo land "
-                        "in train and test at once — see docs/DATASETS.md")
+                        "in train and test at once, see docs/DATASETS.md")
     ap.add_argument("--workspace", default=ROBOFLOW_WORKSPACE,
                     help=f"Roboflow workspace (default: {ROBOFLOW_WORKSPACE})")
     ap.add_argument("--project", default=ROBOFLOW_PROJECT,

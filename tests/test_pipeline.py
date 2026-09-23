@@ -1,7 +1,7 @@
 """Pipeline, storage and CLI tests.
 
 These are wiring tests. The maths is covered in test_calibrate/test_measure/
-test_trust; what's left to get wrong here is plumbing — a stage that doesn't get
+test_trust; what's left to get wrong here is plumbing: a stage that doesn't get
 timed, a number that reaches the database as the wrong column, a correction that
 overwrites the machine's own verdict.
 """
@@ -301,7 +301,7 @@ def test_config_selects_the_stub_by_default(cfg):
 
 
 def test_a_yolo_backend_with_no_weights_falls_back_to_the_stub(cfg, capsys):
-    """It must not crash a grading station because a weights file moved — but it
+    """It must not crash a grading station because a weights file moved, but it
     must say so, loudly, because silently grading fish with a made-up model is
     the worst failure this project has."""
     cfg = dict(cfg)

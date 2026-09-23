@@ -96,7 +96,7 @@ def correct_record(
 ):
     """Record a human verdict. `decision` accepts PASS, CULL or REVIEW.
 
-    Accepting REVIEW as a human verdict is deliberate — "I looked and I still
+    Accepting REVIEW as a human verdict is deliberate. "I looked and I still
     can't tell" is a real answer and it's different from never having looked.
     """
     decision = str(payload.get("decision", "")).upper()

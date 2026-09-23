@@ -9,7 +9,7 @@ a tray) and it annotates FOUR points per fish, not twelve:
     model index 2 -> dorsal_origin
     model index 3 -> eye_centre
 
-I read that off the images, not off a schema file — the export ships no keypoint
+I read that off the images, not off a schema file, because the export ships no keypoint
 names at all, only `kpt_shape: [4, 3]`. docs/DATASETS.md has the renders.
 
 The names below are still the full vocabulary, deliberately. The four real points
@@ -65,7 +65,7 @@ DESCRIPTIONS: dict[str, str] = {
     "snout_tip": "most anterior point of the closed mouth",
     "eye_anterior": "anterior margin of the eye",
     "eye_posterior": "posterior margin of the eye",
-    "eye_centre": "centre of the eye — the single eye point the real dataset annotates",
+    "eye_centre": "centre of the eye, the single eye point the real dataset annotates",
     "operculum_posterior": "posterior edge of the gill cover",
     "dorsal_origin": "anterior insertion of the dorsal fin at the body",
     "dorsal_insertion": "posterior insertion of the dorsal fin at the body",
@@ -103,7 +103,7 @@ TRAIT_REQUIREMENTS: dict[str, tuple[str, ...]] = {
 #
 # Four points is a coarse spine. A fish bent *between* two of them doesn't show
 # up at all. That limitation is real and it is not fixable without more
-# landmarks — see docs/DATASETS.md.
+# landmarks, see docs/DATASETS.md.
 MIDLINE_CHAIN: tuple[tuple[str, ...], ...] = (
     ("snout_tip",),
     ("dorsal_origin", "ventral_margin"),
@@ -114,12 +114,12 @@ MIDLINE_CHAIN: tuple[tuple[str, ...], ...] = (
 
 @dataclass(frozen=True)
 class Landmarks:
-    """One detection. This is the contract — the stub returns it today and the
+    """One detection. This is the contract. The stub returns it today and the
     trained model returns it later, and nothing downstream can tell which.
 
     `points` is (N_LANDMARKS, 2) in image pixels, `confidence` is (N_LANDMARKS,)
     in 0..1. A landmark the detector couldn't place is marked False in `present`
-    and its coordinates are meaningless — check `present` before reading a point.
+    and its coordinates are meaningless, so check `present` before reading a point.
 
     `detected` False means no fish at all, in which case the arrays are zeros.
     Kept as a separate flag from "all landmarks absent" because they're different
@@ -182,7 +182,7 @@ class Landmarks:
         return self.detected and all(bool(self.present[INDEX[n]]) for n in names)
 
     def point(self, name: str) -> np.ndarray:
-        """(2,) pixel coordinates. Raises if the landmark isn't present — reading
+        """(2,) pixel coordinates. Raises if the landmark isn't present, because reading
         a missing landmark should be a crash in a test, not a zero in a record."""
         i = INDEX[name]
         if not self.detected or not self.present[i]:
@@ -204,7 +204,7 @@ class Landmarks:
 
     def as_dict(self) -> dict[str, dict[str, float]]:
         """Name-keyed dump for the DB and the wire. Absent landmarks are omitted
-        entirely rather than written as nulls — a missing key is harder to
+        entirely rather than written as nulls, because a missing key is harder to
         misread than a null coordinate."""
         return {
             name: {
@@ -220,7 +220,7 @@ class Landmarks:
 def midline_points(lm: Landmarks) -> np.ndarray | None:
     """Derived head-to-tail midline, (M, 2) pixels, or None if it can't be built.
 
-    Needs at least three of the four chain points to be meaningful — two points
+    Needs at least three of the four chain points to be meaningful. Two points
     fit a line exactly and would score zero curvature by construction, which is
     an answer that looks confident and means nothing.
     """

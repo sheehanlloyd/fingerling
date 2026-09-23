@@ -6,10 +6,10 @@ on that plane converts to millimetres.
 
 Two targets:
 
-  ArUco marker on my phone screen — I pick the pixel size that gives an exact
+  ArUco marker on my phone screen. I pick the pixel size that gives an exact
   physical size from the screen's PPI, so there's no printer scaling error.
 
-  Credit card — ISO/IEC 7810 ID-1 is 85.60 x 53.98 mm worldwide, so I know its
+  Credit card. ISO/IEC 7810 ID-1 is 85.60 x 53.98 mm worldwide, so I know its
   size to a hundredth of a millimetre without owning a caliper.
 
 Two things I want you to read before trusting anything this module reports:
@@ -26,7 +26,7 @@ Two things I want you to read before trusting anything this module reports:
    corners: I take every point on the detected outline, map it to the board plane,
    and measure how far it sits from the ideal rectangle's edges. That is an
    over-determined check. It catches lens distortion, a bent card, and sloppy
-   segmentation — none of which the 4-corner solve can see.
+   segmentation, none of which the 4-corner solve can see.
 
 2. WHAT ACTUALLY CATCHES A BAD VIEW IS OBLIQUITY, NOT RESIDUAL.
    A homography from a steeply tilted plane stretches the image far more in one
@@ -36,7 +36,7 @@ Two things I want you to read before trusting anything this module reports:
    rotation is a rigid motion so it stays 1.0. Edge-on it blows up. That is the
    number that flags a bad frame.
 
-Coplanarity: I assume the target and the fish sit on the same plane. They don't —
+Coplanarity: I assume the target and the fish sit on the same plane. They don't,
 a fish has thickness and its midline sits above the board by roughly half its
 body depth. That's a systematic magnification error, not noise, and it makes
 every length read slightly long. See docs/CALIBRATION.md.
@@ -50,7 +50,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-# ISO/IEC 7810 ID-1. Not a measurement — the standard itself.
+# ISO/IEC 7810 ID-1. Not a measurement, the standard itself.
 CARD_ID1_WIDTH_MM = 85.60
 CARD_ID1_HEIGHT_MM = 53.98
 # ID-1 also specifies the corner radius, and it matters: the outline residual has
@@ -104,7 +104,7 @@ class Calibration:
     `H` maps image pixels to board-plane millimetres. Board-plane origin is the
     target's own top-left corner; the axes are the target's edges. That means
     millimetre coordinates are only comparable within a single frame, which is
-    all any measurement here needs — every trait is a distance or a ratio.
+    all any measurement here needs, because every trait is a distance or a ratio.
     """
 
     calibrated: bool
@@ -277,7 +277,7 @@ def _outline_residual_px(
     sharp-cornered rectangles, so none of them could ever have caught it.
 
     Excluding a margin of 1.6x the corner radius leaves the straight edges, which
-    is what the check is actually about — a bent card or a distorting lens bows
+    is what the check is actually about. A bent card or a distorting lens bows
     the EDGES, and that's still measured.
     """
     pts_px = np.asarray(contour_px, dtype=np.float64).reshape(-1, 2)
@@ -315,7 +315,7 @@ def find_aruco(
 ) -> tuple[np.ndarray, np.ndarray] | None:
     """Find the largest ArUco marker. Returns (corners_px, board_mm) or None.
 
-    If several markers are in frame I take the biggest one and ignore the rest —
+    If several markers are in frame I take the biggest one and ignore the rest,
     without a known layout for the others there's no way to place them in a
     common board frame, and guessing one would be worse than dropping them.
     """
@@ -327,7 +327,7 @@ def find_aruco(
     # Subpixel refinement is off by default, and leaving it off costs real
     # accuracy. Unrefined, the detector reports the index of the outermost black
     # pixel, so a marker whose true edges span 519.5..879.5 comes back as
-    # 520..879 — one pixel short, an inward bias of about 0.3% on a 360 px
+    # 520..879, one pixel short, an inward bias of about 0.3% on a 360 px
     # marker. That bias scales straight through to millimetres and it's
     # systematic, so averaging frames won't remove it. With refinement the same
     # marker measures within about 0.03%.
@@ -384,7 +384,7 @@ def _corners_from_edges(
     """Recover the card's true sharp corners by fitting its four straight edges.
 
     THIS IS THE BIGGEST ACCURACY FIX IN THE FILE and it took real photographs to
-    find. A card has rounded corners — ID-1 specifies a 3.18 mm radius — so
+    find. A card has rounded corners (ID-1 specifies a 3.18 mm radius) so
     `approxPolyDP` returns four vertices that sit ON the arcs, not where the
     edges would meet if extended. Each vertex is inset from the true corner by
     about r(sqrt(2) - 1) along the diagonal, which is 0.293r perpendicular to
@@ -395,7 +395,7 @@ def _corners_from_edges(
     millimetre it produces afterwards is too big by 85.60/83.74 = 2.2%.
 
     How I found it: on four real photographs, ZERO of 6,460 outline points fell
-    inside the ideal rectangle — every single one was outside it, by a median of
+    inside the ideal rectangle. Every single one was outside it, by a median of
     0.929 mm. A uniform one-sided offset is what an inset corner looks like; a
     bent card or a bad lens would scatter to both sides. Measured over-read on
     those shots was +2.9%, against +2.2% predicted from the geometry alone.
@@ -407,7 +407,7 @@ def _corners_from_edges(
 
     The lines are NOT fitted to the contour points. A contour is wherever the
     segmentation happened to put it, and `_card_candidates` dilates its Canny
-    mask, which pushes the traced outline about 2 px outward — a bias that
+    mask, which pushes the traced outline about 2 px outward, a bias that
     `cornerSubPix` used to hide and that this function would otherwise inherit.
     So each contour point is first pushed along the edge normal onto the peak of
     the intensity gradient, with a parabolic sub-pixel fit, and the line is
@@ -417,7 +417,7 @@ def _corners_from_edges(
     Returns (corners, edge_points) or None if any edge has too few points to fit,
     in which case the caller keeps the original corners. The edge points come
     back because the residual has to be measured against the same thing the
-    corners were fitted to — measuring a gradient-fitted rectangle against a
+    corners were fitted to. Measuring a gradient-fitted rectangle against a
     mask-derived contour just re-measures how much the mask was dilated.
     """
     pts = np.asarray(outline, dtype=np.float64).reshape(-1, 2)
@@ -519,8 +519,8 @@ def _refine_corners(frame: np.ndarray, quad: np.ndarray, max_shift_px: float = 4
     approxPolyDP picks its vertices from a binarised contour, so they land on
     whole pixels and inherit the same inward bias the ArUco corners had. This
     costs a few lines and buys back most of it. If the refinement wanders further
-    than max_shift_px it's found something else — a texture corner on the card
-    face, say — so keep the original.
+    than max_shift_px it's found something else (a texture corner on the card
+    face, say) so keep the original.
     """
     gray = frame if frame.ndim == 2 else cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     seed = quad.astype(np.float32).reshape(-1, 1, 2)
@@ -550,14 +550,14 @@ def find_card(
     """Find a card-shaped quad. Returns (corners_px, board_mm, outline_px) or None.
 
     The aspect ratio filter is the only thing separating a card from any other
-    rectangle in frame, so it's doing real work. It's deliberately loose —
+    rectangle in frame, so it's doing real work. It's deliberately loose,
     perspective changes the apparent ratio, and tightening it would reject good
     frames more often than it rejects wrong objects.
 
     Two filters here exist because a test caught them, not because I planned them:
     a quad touching the image border is rejected (the frame's own edge is a
     perfect rectangle, and on a 1400x900 canvas its aspect ratio is within 2% of
-    a credit card's — the detector cheerfully calibrated against the whole frame),
+    a credit card's, and the detector cheerfully calibrated against the whole frame),
     and so is anything covering more than max_area_frac of the image. A card that
     runs off the edge has at least one corner in the wrong place anyway.
     """
@@ -598,7 +598,7 @@ def find_card(
         else:
             quad = _refine_corners(frame, quad)
 
-        # Average the two opposite sides — under perspective they differ, and the
+        # Average the two opposite sides. Under perspective they differ, and the
         # mean is a better stand-in for the true edge length than either one.
         side_top_bottom = (
             np.linalg.norm(quad[0] - quad[1]) + np.linalg.norm(quad[3] - quad[2])
@@ -643,8 +643,8 @@ def _uncalibrated(reason: str, settings: CalibrationSettings) -> Calibration:
 
 
 def calibrate(frame: np.ndarray, settings: CalibrationSettings) -> Calibration:
-    """Try to calibrate one frame. Never raises on a missing or unusable target —
-    it comes back uncalibrated with a reason, and the caller reports pixels."""
+    """Try to calibrate one frame. Never raises on a missing or unusable target.
+    It comes back uncalibrated with a reason, and the caller reports pixels."""
     if settings.target == "none":
         return _uncalibrated("calibration disabled in config", settings)
 
@@ -661,7 +661,7 @@ def calibrate(frame: np.ndarray, settings: CalibrationSettings) -> Calibration:
         if kind == "aruco":
             if settings.marker_length_mm is None:
                 reasons.append(
-                    "aruco: marker_length_mm is null in config — refusing to invent a scale"
+                    "aruco: marker_length_mm is null in config, refusing to invent a scale"
                 )
                 continue
             hit = find_aruco(frame, settings.marker_length_mm, settings.aruco_dictionary)

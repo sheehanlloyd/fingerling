@@ -2,7 +2,7 @@
 --
 -- The columns down to latency_ms_json are the schema the spec specifies, in
 -- that order. Everything under the EXTENSIONS heading I added, and each one has
--- a reason next to it — they're flagged rather than folded in so the difference
+-- a reason next to it. They're flagged rather than folded in so the difference
 -- between "the spec asked for this" and "I decided this" stays visible.
 --
 -- Raw landmarks and the frame path are stored, not just the derived numbers. If

@@ -36,7 +36,7 @@ from pipeline.trust import TrustResult, TrustSettings, score_trust
 
 
 class _Stopwatch:
-    """Accumulates per-stage milliseconds. Deliberately dumb — a context manager
+    """Accumulates per-stage milliseconds. Deliberately dumb. A context manager
     per stage, one dict out. Overhead is a couple of microseconds, which is well
     under the resolution anything here is measured at."""
 
@@ -150,7 +150,7 @@ class Pipeline:
     """Holds the settings and the detector so they're built once, not per frame.
 
     Building a detector per frame would dominate the timing numbers for the real
-    model — loading weights takes far longer than inference — and would make the
+    model (loading weights takes far longer than inference) and would make the
     per-stage breakdown a lie.
     """
 
@@ -229,7 +229,7 @@ class Pipeline:
 
         `skip_undetected` is on by default: a frame with no fish in it is not a
         graded fish and writing a row for it would put thousands of empty records
-        between the ones that matter. The count of skipped frames is not lost —
+        between the ones that matter. The count of skipped frames is not lost,
         the caller sees every frame go past and can count them.
         """
         from store import db as _db

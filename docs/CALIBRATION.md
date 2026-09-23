@@ -12,7 +12,8 @@ converts to millimetres with one matrix multiply.
 
 The board-plane origin is the target's own top-left corner and the axes are its
 edges. So millimetre coordinates are only comparable within a single frame. That's
-fine — every trait in this project is a distance or a ratio, and both survive.
+fine, because every trait in this project is a distance or a ratio and both
+survive.
 
 Two targets, in preference order:
 
@@ -31,7 +32,7 @@ owning a caliper. Detected as a bright convex quad whose aspect ratio is close t
 
 A homography has 8 degrees of freedom. Four point correspondences give exactly 8
 equations. The system is exactly determined, so the solution reproduces those four
-points perfectly and the reprojection residual is zero to floating-point noise —
+points perfectly and the reprojection residual is zero to floating-point noise,
 **no matter how badly the target is positioned.**
 
 My near-edge-on synthetic scene reports a residual of 0.000 px. It is a genuinely
@@ -42,7 +43,7 @@ So results carry a `residual_meaningful` flag. For a single ArUco marker it's
 False and the number is decoration. For the card it's True, because there I don't
 only use the corners: I take every point of the detected outline, map it into the
 board plane, and measure how far it lands from the ideal rectangle's edges. That's
-over-determined, and it catches things the corner solve can't — a card that isn't
+over-determined, and it catches things the corner solve can't, like a card that isn't
 flat, a lens that bends straight lines, a sloppy segmentation.
 
 | card | outline residual |
@@ -59,13 +60,13 @@ Read the tilt straight off the matrix. Differentiate the homography at a point a
 you get a 2x2 Jacobian whose singular values are the millimetres-per-pixel scale
 along the directions that get stretched most and least. From that:
 
-- **anisotropy** — worst `s_max / s_min` at any one point. How much the map
+- **anisotropy**, the worst `s_max / s_min` at any one point. How much the map
   stretches one direction against the other.
-- **scale spread** — largest mean scale anywhere on the target over the smallest.
+- **scale spread**, the largest mean scale anywhere on the target over the smallest.
   How much the scale drifts across the target.
 
 `obliquity` is the worse of the two. Flat-on it's 1.0. Rotate the target in its own
-plane and it stays 1.0, because rotation is a rigid motion — that's the property
+plane and it stays 1.0, because rotation is a rigid motion. That's the property
 that makes it useful, since in-plane rotation is harmless and tilt is not.
 
 Measured on synthetic scenes:
@@ -79,7 +80,7 @@ Measured on synthetic scenes:
 | card square-on | 1.001 | 0.92 px |
 | card rotated 30 degrees | 1.001 | 1.71 px |
 | card tilted, far edge at 72% | 1.639 | 1.11 px |
-| card near edge-on | not detected at all | — |
+| card near edge-on | not detected at all | n/a |
 
 ## Why tilt matters, given that the math is exact
 
@@ -135,7 +136,7 @@ one plane, tilt the plane, and measure the coins through the calibration.
 
 The result is not what I expected. **Tilt does not degrade the measurement.** Max
 error stays under 0.15 mm from obliquity 1.00 all the way to 1.40, with no trend
-— which, on reflection, is the whole point of solving a homography. A homography
+which, on reflection, is the whole point of solving a homography. A homography
 undoes perspective exactly. A pixels-per-millimetre constant could not, and
 there's a test (`test_a_naive_pixels_per_mm_would_fail_the_tilted_case`) that
 checks a naive scale factor really would fail the same scene, so the tilted test
@@ -150,7 +151,7 @@ What fails is **detection**, and it fails abruptly:
 | ~1.62 | no coins found |
 | > 1.71 | the card itself isn't found |
 
-So I set `max_obliquity: 1.4`. That is **not** a measured failure point — it's the
+So I set `max_obliquity: 1.4`. That is **not** a measured failure point. It's the
 edge of the evidence. Past it I can't measure anything because nothing is
 detected, so I don't know whether the geometry holds and I'm not going to imply I
 do. 2.0 was worse than a guess; it was a guess that looked like a specification.
@@ -163,7 +164,7 @@ and with tilt. So the real threshold is probably tighter than 1.4, not looser.
 ## What the synthetic sweep found in my own code
 
 Worth recording because it's the reason the sweep existed. The first run measured
-every coin **0.41 mm small** — the same absolute amount regardless of coin
+every coin **0.41 mm small**, the same absolute amount regardless of coin
 diameter. A constant offset is a boundary problem; a constant percentage would
 have been a scale problem. That told me where to look without any guessing.
 
@@ -172,7 +173,8 @@ into a ramp several pixels wide, and Otsu's single global threshold isn't the
 ramp's midpoint. On that scene it landed at 123 where the midpoint was about 93,
 so every boundary cut inside its object.
 
-Deleting the blur drops the error to 0.04 mm and is the wrong fix — the blur is
+Deleting the blur drops the error to 0.04 mm and is the wrong fix, because the
+blur is
 there so sensor noise doesn't shatter contours in a real photograph, and the size
 of the bias depends on where Otsu lands, which depends on lighting. It's not a
 constant anyone can subtract. Refining each boundary point onto the half-maximum
@@ -189,7 +191,7 @@ Everything above was measured on rendered scenes. The first photographs of an
 actual card came back with outline residuals of 14-24 px against a 2.0 px
 threshold, and measurements 2.9% too large.
 
-My first guess was the surface — the card was on carpet, which is compressible,
+My first guess was the surface. The card was on carpet, which is compressible,
 so it might not have been flat. I reshot on a hard table and **the residual did
 not drop**. That's the useful kind of negative result: it ruled out the obvious
 answer in fifteen minutes.
@@ -204,7 +206,7 @@ get told they span 85.60 mm, so everything measured afterwards is 2.2% too big.
 
 The diagnostic worth remembering: **zero of 6,460 outline points fell inside the
 ideal rectangle.** All of them outside, median 0.929 mm. A uniform one-sided
-offset is what an inset corner looks like — a bent card or a distorting lens
+offset is what an inset corner looks like. A bent card or a distorting lens
 would scatter to both sides. The 0.93 mm predicted from the corner radius and the
 0.929 mm measured agreeing to three decimal places is what turned a suspicion
 into a diagnosis.
@@ -237,7 +239,7 @@ how much the mask was dilated.
 And the threshold that was a placeholder now has evidence behind it: hard-table
 frames sit at 0.29 and 0.97 px and are accepted, carpet frames at 3.05 and 5.88
 px and are rejected, and the accepted frames measure about three times better.
-So the carpet did matter after all — the corner bug was simply an order of
+So the carpet did matter after all. The corner bug was simply an order of
 magnitude larger and hiding it.
 
 Bow sensitivity, measured on a synthetic scene at the same threshold: 1.0 mm of
@@ -250,7 +252,7 @@ limit is around 1.2-1.4 mm.
 subject are coplanar. They aren't. A fish has thickness and its midline sits above
 the board by roughly half its body depth. Everything on the fish is therefore
 closer to the camera than the calibration plane, so it images larger, so every
-length reads long. It's a systematic magnification, not noise — averaging frames
+length reads long. It's a systematic magnification, not noise, so averaging frames
 will not help.
 
 The size of it depends on camera distance: for a fish whose midline sits `h` above
@@ -259,7 +261,7 @@ A 20 mm half-depth at 500 mm working distance is about 4%, which on a 200 mm fis
 is 8 mm. That's larger than everything else on this page put together.
 
 I haven't measured my actual working distance yet, so I'm not putting a number on
-the real bias. <!-- TODO: my call — measure working distance, then either correct
+the real bias. <!-- TODO: my call. Measure working distance, then either correct
 for it with an assumed half-depth or state the bias in the README -->
 
 **No lens distortion model.** No camera intrinsics, no undistortion. A wide-angle

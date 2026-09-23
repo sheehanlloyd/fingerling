@@ -6,7 +6,7 @@ Everything about this is shaped by the machine (M4 Pro, 24 GB, MPS) and by the
 dataset being small (fishKeypoints is 593 images).
 
   amp=False. Mixed precision is unreliable on MPS with Ultralytics, and that
-  matches what I'd expect — the MPS autocast path is the
+  matches what I'd expect, since the MPS autocast path is the
   least-travelled one in that codebase. Not negotiable, and it's a flag here
   rather than a default so it can't be lost.
 
@@ -21,8 +21,8 @@ dataset being small (fishKeypoints is 593 images).
   the augmentation would train against wrong labels on half the inputs. See
   eval/dataset.py.
 
-  Everything the run produces — the actual epoch count, the actual wall time, the
-  metrics Ultralytics reports — gets written to a JSON file next to the weights.
+  Everything the run produces (the actual epoch count, the actual wall time, the
+  metrics Ultralytics reports) gets written to a JSON file next to the weights.
   No number in this repo's documentation should come from anywhere else.
 """
 
@@ -119,7 +119,7 @@ def train(
 
 def _extract_metrics(results: Any) -> dict[str, Any]:
     """Whatever Ultralytics actually reported, verbatim. No rounding up, no
-    picking the flattering number — the point of this file is that the README
+    picking the flattering number. The point of this file is that the README
     can only quote things that came out of here."""
     out: dict[str, Any] = {}
     box = getattr(results, "results_dict", None)

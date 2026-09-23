@@ -2,13 +2,13 @@
 
 A note on shape: the three `from_*` functions are ordinary functions that RETURN
 a generator, rather than being generators themselves. That's deliberate and a
-test caught it — as generators, "no such file" wasn't raised until the first
+test caught it. As generators, "no such file" wasn't raised until the first
 `next()`, which is inside the pipeline's loop and well past the CLI's error
 handling. A source that can't be opened should fail at the moment you try to
 open it.
 
 Webcam, video file, directory of images. One iterator interface over all three so
-nothing downstream knows or cares which it's reading — the batch CLI and the live
+nothing downstream knows or cares which it's reading. The batch CLI and the live
 server run the identical pipeline.
 
 Frames get downscaled to `capture.max_long_edge_px` before anything sees them.
@@ -61,7 +61,7 @@ class CaptureError(RuntimeError):
 def from_webcam(index: int = 0, max_long_edge: int | None = 1280, limit: int | None = None) -> Iterator[Frame]:
     """Frames off a camera, forever, until the camera stops or `limit` is hit.
 
-    No reconnection logic. If the camera drops, this stops — a grading station
+    No reconnection logic. If the camera drops, this stops, because a grading station
     that silently reconnected to a different device would be worse than one that
     halted and said so.
     """
@@ -95,7 +95,7 @@ def from_video(
 
     Stride exists because a 30 fps video of one fish on a tray is 30 nearly
     identical frames per second, and grading every one of them fills the database
-    with duplicates of the same fish. It is NOT fish tracking — this project has
+    with duplicates of the same fish. It is NOT fish tracking. This project has
     no notion of the same fish across frames, and the scope doesn't ask
     for one. Each frame is an independent grading event.
     """

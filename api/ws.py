@@ -1,6 +1,6 @@
 """WebSocket streaming: annotated frames and records out to the browser.
 
-The transport question that was sitting open in docs/DECISIONS.md is settled —
+The transport question that was sitting open in docs/DECISIONS.md is settled.
 `websockets` is now a dependency. uvicorn on its own has no WebSocket
 implementation and `ws="auto"` resolves to none, so without it a WS connection is
 simply refused. The alternatives were wsproto (same job, less widely used),
@@ -11,8 +11,8 @@ actually asks for was the cheapest of those.
 Design notes:
 
   Frames go out as base64 JPEG inside the JSON message. That is not how you'd
-  build a video pipeline — it's roughly 33% bigger than the bytes and it costs a
-  copy — but it keeps the frame and the record it belongs to in ONE message, so
+  build a video pipeline (it's roughly 33% bigger than the bytes and it costs a
+  copy) but it keeps the frame and the record it belongs to in ONE message, so
   the overlay can never be a frame ahead of the numbers beside it. On a single
   station at single-digit fps that tradeoff is free, and the alternative
   (a binary channel plus correlation ids) is a lot of machinery for one operator
@@ -66,7 +66,7 @@ class Hub:
         for ws in list(self.clients):
             try:
                 await ws.send_text(payload)
-            except Exception:  # noqa: BLE001 — a dead socket is not an error here
+            except Exception:  # noqa: BLE001. A dead socket is not an error here
                 dead.append(ws)
         for ws in dead:
             self.leave(ws)
@@ -83,7 +83,7 @@ class LiveSession:
     """Runs the pipeline over a capture source and pushes results to the Hub.
 
     One asyncio task, not a thread. The pipeline is synchronous and CPU-bound, so
-    each frame briefly blocks the event loop — at a few frames a second on a
+    each frame briefly blocks the event loop, but at a few frames a second on a
     single-station tool that's fine, and it keeps the whole thing to one place
     where state lives. If this ever needed to run at camera rate it would move to
     a thread with a queue, and that's a real change, not a tweak.

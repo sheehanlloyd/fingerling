@@ -3,7 +3,7 @@
 One line per decision, with why. Anything still open sits at the top so I can't
 lose track of it.
 
-## Phase 2 — the day the dataset actually arrived
+## Phase 2: the day the dataset actually arrived
 
 I got a Roboflow API key and everything that had been blocked since checkpoint 1
 unblocked at once. Most of this section is things I got wrong earlier being
@@ -17,8 +17,8 @@ dataset and nothing about it suits a single-station grading tool. I'd picked it
 blind in checkpoint 1 because it was immediately downloadable, and the survey
 said out loud that was a gamble. It lost.
 
-**Fish Measurement** — 245 images, one salmonid parr per frame in a white tray,
-four keypoints, CC BY 4.0 — is the right dataset and my own survey dismissed it
+**Fish Measurement** (245 images, one salmonid parr per frame in a white tray,
+four keypoints, CC BY 4.0) is the right dataset, and my own survey dismissed it
 in three lines without checking. Full write-up in docs/DATASETS.md.
 
 Also: FISH-KP (NIWA) 404s now. The survey's link is dead.
@@ -26,7 +26,7 @@ Also: FISH-KP (NIWA) 404s now. The survey's link is dead.
 ### The schema is four points, and `eye_centre` is new
 
 `snout_tip`, `caudal_fork`, `dorsal_origin`, `eye_centre`. The export ships no
-keypoint names — only `kpt_shape: [4, 3]` — so I read them off rendered
+keypoint names, only `kpt_shape: [4, 3]`, so I read them off rendered
 annotations. I'd first inferred them from summary statistics and got two of the
 four wrong; looking at three pictures corrected it. Statistics were consistent
 with a false story.
@@ -63,15 +63,15 @@ Two different situations were wearing the same `None`: this detector *can*
 measure curvature and didn't for this fish (suspicious, review it), versus this
 detector can *never* measure curvature (a documented capability limit, and
 re-litigating it per fish tells nobody anything). `assess_deformity: false` says
-the second. It does not silently disable culling — every decision made under it
+the second. It does not silently disable culling. Every decision made under it
 carries a "DEFORMITY NOT ASSESSED" reason on the record, so a PASS can't be
 misread as a clean deformity check.
 
-### Millimetres are now gated on `reliable`, not on `calibrated` — this was a bug
+### Millimetres are now gated on `reliable`, not on `calibrated`. This was a bug
 
 A real test frame with no card in it found something card-shaped at obliquity
 4.57 with a 21 px outline residual. The row was correctly tagged
-`calibration_reliable: 0` — **and `fork_length_mm: 84.42` was written to the
+`calibration_reliable: 0`, **and `fork_length_mm: 84.42` was written to the
 database anyway.** The flag was right and nothing read it.
 
 That's the exact failure this project exists to prevent, sitting in the code the
@@ -85,7 +85,7 @@ and "target found but too oblique to believe" are different problems.
 ### `max_obliquity` lowered from 2.0 to 1.4, and 2.0 was never justified
 
 Swept a synthetic scene from obliquity 1.00 to 1.71 with `eval/validate_mm`.
-**Measurement accuracy does not degrade with tilt** — max error stayed under
+**Measurement accuracy does not degrade with tilt.** Max error stayed under
 0.15 mm across the whole range, because a homography undoes perspective properly.
 What fails is detection: past ~1.43 a foreshortened coin stops being round enough
 to find, and past 1.71 the card itself isn't found.
@@ -95,13 +95,13 @@ have no data either way, and 2.0 never had any.
 
 ### Subpixel edge refinement in `validate_mm`, found by a test that knew the answer
 
-The synthetic scene measured every coin ~0.41 mm small — same magnitude
+The synthetic scene measured every coin ~0.41 mm small, the same magnitude
 regardless of coin size, which is a boundary offset rather than a scale error.
 Cause: `_binarise` blurs before Otsu, the blur turns each edge into a ramp, and
 Otsu's global threshold generally isn't the ramp's midpoint (123 where the
 midpoint was ~93). A threshold above the midpoint cuts inside the object.
 
-Deleting the blur fixes the synthetic case (error → 0.04 mm) and is wrong — the
+Deleting the blur fixes the synthetic case (error to 0.04 mm) and is wrong. The
 blur is there to stop sensor noise shattering contours in a real photo, and the
 size of the bias depends on where Otsu lands, which depends on lighting. It isn't
 a constant I can subtract. Refining each boundary point to the half-maximum
@@ -109,18 +109,18 @@ intensity makes the measurement threshold-independent, which is the property
 worth having. Residual bias +0.14 mm.
 
 I stopped tuning there deliberately. The remaining 0.5% is sub-pixel boundary
-convention on a rasterised hard edge that has no optical blur in it — chasing it
+convention on a rasterised hard edge that has no optical blur in it, so chasing it
 further would be fitting to my own renderer rather than to reality. Real photos
 are what arbitrate that.
 
 ### Two bugs in `fetch_roboflow` that had never run
 
-`versions[-1]` took the *oldest* version — v1, 55 images — because Roboflow
+`versions[-1]` took the *oldest* version (v1, 55 images) because Roboflow
 returns them newest-first. And there was no polling for the server-side export
 build, so the first real call died on `{'progress': 0}`. Code that has never
 executed is not code that works.
 
-### Train/test leakage in the published split — the most consequential find
+### Train/test leakage in the published split, the most consequential find
 
 245 files, **120 source photographs**. Roboflow exports one file per augmented
 copy and the published split was made over files, not photographs, so **34
@@ -140,13 +140,13 @@ synthetic scene could have.
 
 **Global Otsu can't see a real tabletop.** The detector thresholded once and
 assumed the image was bimodal. That scene had carpet at 80, one loonie at 136,
-another at 187 and the card at 227, and Otsu landed on 146 — straight between the
+another at 187 and the card at 227, and Otsu landed on 146, straight between the
 two coins. One went to background, the other merged with the card, zero
 detections. Replaced with a threshold sweep that keeps whatever is stably round
 at any level, which is the stable-region idea behind MSER without the machinery.
 
 **Perimeter-based circularity is the wrong statistic.** A coin whose edge blended
-into carpet scored 0.697 circularity against a 0.80 bar and was discarded — while
+into carpet scored 0.697 circularity against a 0.80 bar and was discarded, while
 its area was 133,972 px² against an expected 136,000. The shape was fine, the
 outline was fuzzy, and perimeter is exactly the quantity noise inflates. Now it
 fits an ellipse and compares areas, which is the same argument that already made
@@ -155,7 +155,7 @@ fits an ellipse and compares areas, which is the same argument that already made
 **Subpixel refinement stopped earning its place, so it's gone.** It existed to
 undo a boundary bias that the single-Otsu detector created. The sweep picks the
 median stable level, which already sits on the middle of the intensity ramp, so
-doing both overshot — it made the synthetic case worse (0.038 mm to 0.159 mm) and
+doing both overshot. It made the synthetic case worse (0.038 mm to 0.159 mm) and
 added about +0.1 mm on both real photos. Deleted rather than kept around.
 
 **Rank matching needed a guard.** A round object on the floor behind the table
@@ -168,8 +168,8 @@ all rather than pairing the wrong things.
 **Rounded corners.** ID-1 specifies a 3.18 mm corner radius, so a real card is
 four straight edges joined by arcs, and each arc departs from a sharp-cornered
 rectangle by about 0.93 mm. The outline residual now excludes a margin around
-each corner. This turned out NOT to be what was inflating my residual — the real
-cause was the outline bleeding into carpet fibres — but it's a genuine bug that
+each corner. This turned out NOT to be what was inflating my residual (the real
+cause was the outline bleeding into carpet fibres) but it's a genuine bug that
 every real card would hit and no synthetic scene could show.
 
 ### Rounded card corners were costing 2.2% on every measurement
@@ -193,7 +193,7 @@ a coincidence.
 Fixed by fitting a line along each of the four straight edges and intersecting
 them. Two details matter. The arcs are excluded, so only genuinely straight edge
 is fitted. And the lines are fitted to the **intensity gradient**, not to the
-contour — `_card_candidates` dilates its Canny mask, which pushes the traced
+contour. `_card_candidates` dilates its Canny mask, which pushes the traced
 outline about 2 px outward, a bias `cornerSubPix` had been masking and that a
 contour-based fit would have inherited. The residual is measured against those
 same gradient-refined points, because measuring a gradient-fitted rectangle
@@ -218,7 +218,7 @@ frames cleanly:
 Frames it accepts measure about three times better than frames it rejects. That's
 the first evidence that the residual predicts measurement error rather than just
 being a number I report. It also means the carpet hypothesis was right after all
-— the corner bug was just an order of magnitude bigger and hiding it.
+The corner bug was just an order of magnitude bigger and hiding it.
 
 I'm still leaving the value marked as it is rather than declaring it measured.
 Four photographs, one camera, two surfaces.
@@ -227,7 +227,7 @@ Four photographs, one camera, two surfaces.
 
 **0.15 mm worst case on a 26.5 mm object**, on frames that pass their own quality
 check. Synthetic scenes give 0.09 mm, so real photographs now cost less than a
-tenth of a millimetre over a rendered one — which was not true before the corner
+tenth of a millimetre over a rendered one, which was not true before the corner
 fix, when they cost 0.8 mm.
 
 The coplanarity prediction closes too: +0.29% expected at 350 mm working
@@ -249,7 +249,7 @@ comment.
 - **No new dependency for plotting.** The obliquity chart is drawn with OpenCV,
   which is already a dependency. matplotlib would have been one command and I'd
   rather ask first.
-- **Didn't correct the residual +0.14 mm.** See above — it would be fitting to
+- **Didn't correct the residual +0.14 mm.** See above. It would be fitting to
   my own renderer.
 - **Didn't invent a curvature proxy from snout/dorsal/fork.** A dorsal point sits
   on the back, not the midline, so its offset from the snout-fork line is mostly
@@ -260,7 +260,7 @@ comment.
   says which.
 
 
-## Blocked — needs something only I can do
+## Blocked: needs something only I can do
 
 - **ArUco marker physical size.** `calibration.aruco.marker_length_mm` is still
   null in `config.yaml`. It's `displayed_side_px / phone_PPI * 25.4` and I
@@ -279,12 +279,13 @@ comment.
   ```
 
 - **The coplanarity bias.** Still unmeasured and still the largest error in the
-  system. Needs me and a tape measure. Nothing in software fixes it — OctaPulse
-  solved the same problem with a depth camera.
+  system. Needs me and a tape measure. Nothing in software fixes it. The real fix
+  is a stereo or depth camera, so the subject's height above the plane is
+  measured rather than assumed away.
 
-## Open — my call, not yet made
+## Open: my call, not yet made
 
-- **Every threshold tagged PLACEHOLDER in `config.yaml`.** By design — Phase 3
+- **Every threshold tagged PLACEHOLDER in `config.yaml`.** By design, Phase 3
   picks them off a real coverage curve. Listed here so nobody mistakes them for
   measured values. There are more of them now: `measure.sigma_at_conf1_px`,
   `measure.sigma_at_conf0_px` and `measure.assumed_corner_error_px` joined the
@@ -297,23 +298,23 @@ comment.
   this repo works without it; the CULL branch doesn't.
 
 - **The coplanarity bias.** Still unmeasured and still the largest error in the
-  system — bigger than everything in docs/CALIBRATION.md put together. Needs me
+  system, bigger than everything in docs/CALIBRATION.md put together. Needs me
   to measure a working distance with a tape measure. Nothing in software fixes
   it.
 
 ## Resolved since last time
 
-- **WebSocket transport — settled, `websockets` added.** uvicorn ships no
+- **WebSocket transport: settled, `websockets` added.** uvicorn ships no
   WebSocket implementation, `ws="auto"` resolved to none, and the connection was
   simply refused. Options were `websockets`, `wsproto`, `uvicorn[standard]`
   (several more packages for things this doesn't use), or dropping to SSE and
-  changing the spec's design. Took `websockets==17.1` — one package, for the
+  changing the spec's design. Took `websockets==17.1`, one package, for the
   thing the design already asked for. `tests/test_api.py` runs a real uvicorn on
   a real port and opens a real socket, so this is verified rather than assumed.
   One wrinkle: `ws="websockets"` is deprecated in this uvicorn, so the code
   passes `ws="auto"`, which picks the installed implementation.
 
-- **Which dataset — decided, then blocked.** fishKeypoints over FishPhenoKey,
+- **Which dataset: decided, then blocked.** fishKeypoints over FishPhenoKey,
   because FishPhenoKey needs a signed agreement emailed to a maintainer with an
   unknown turnaround, and I didn't want the build order blocked behind it. The tradeoff is a much
   smaller set (593 images vs 10,327 annotated) and a schema nobody has read. Then
@@ -329,11 +330,11 @@ ended up in the code.
 
 - **ArUco subpixel corner refinement is on** (`CORNER_REFINE_SUBPIX`). Off by
   default, the detector reports the index of the outermost black pixel, which is
-  a systematic inward bias of about one pixel — 0.28% on a 360 px marker in my
+  a systematic inward bias of about one pixel, 0.28% on a 360 px marker in my
   synthetic scenes. It's a bias, not noise, so averaging frames won't remove it.
   With refinement the same scene measures within 0.03%. Costs a little time per
   frame; checkpoint 6 will show how much.
-- **Card corners get `cv2.cornerSubPix` too**, same reason — `approxPolyDP` picks
+- **Card corners get `cv2.cornerSubPix` too**, same reason. `approxPolyDP` picks
   its vertices off a binarised contour so they land on whole pixels. Guarded: if
   refinement moves a corner more than 4 px it's found something else, so the
   original is kept.
@@ -353,7 +354,7 @@ ended up in the code.
 - **`residual_meaningful` flag on the result.** ArUco results carry it as False so
   a structurally-zero residual never gets read downstream as a quality signal.
 - **Card detector rejects quads that touch the frame border, and anything over
-  50% of frame area.** Not planned — a test caught it. On my 1400x900 test canvas
+  50% of frame area.** Not planned, a test caught it. On my 1400x900 test canvas
   the frame's own edge is a rectangle whose aspect ratio is within 2% of a credit
   card's, and the detector happily calibrated against the whole image.
 - **`DICT_4X4_50` as the default ArUco dictionary.** Fewest bits, so the largest
@@ -381,7 +382,7 @@ ended up in the code.
 
   Eleven of those twelve are a deliberate subset of FishPhenoKey's 22, which is
   the one schema I could actually verify (from the paper). The twelfth,
-  `caudal_fork`, is **not in FishPhenoKey** — it annotates the tail tip and the
+  `caudal_fork`, is **not in FishPhenoKey**. It annotates the tail tip and the
   hypural plate but nothing at the notch between the lobes. I included it anyway
   because the spec's primary trait is fork length and I'd rather the gap be
   visible as a missing landmark than hidden behind total length wearing a fork
@@ -391,15 +392,15 @@ ended up in the code.
   refers to landmarks **by name**, never by index, so remapping is a rename
   table. And `TRAIT_REQUIREMENTS` in the same file declares which landmarks each
   trait needs, so a schema missing a point makes that trait return None with a
-  reason attached — it does not substitute a nearby landmark. Drop `caudal_fork`
+  reason attached, and it does not substitute a nearby landmark. Drop `caudal_fork`
   and fork length goes null and says why; body depth carries on. There's a test
   for exactly that.
 
-**Trust and routing — two changes, both caught by tests:**
+**Trust and routing, two changes, both caught by tests:**
 
 - **Plausibility constraints are tagged hard or soft, and a hard failure zeroes
-  the score outright.** I wrote it as the spec describes first — fraction of
-  constraints passed, blended 50/50 with confidence — and it doesn't work. The
+  the score outright.** I wrote it as the spec describes first, fraction of
+  constraints passed blended 50/50 with confidence, and it doesn't work. The
   stub's `implausible` mode has confidence 0.9 and fails three of ten
   constraints, so fraction-passed is 0.7, the blend is 0.80, and a fish with its
   caudal peduncle upside down sails through as a PASS. Averaging a probability
@@ -410,7 +411,7 @@ ended up in the code.
 
 - **The two signals combine as a weighted GEOMETRIC mean, not arithmetic.** Also
   a test finding. With arithmetic weights of 0.5, clean geometry contributes 0.5
-  on its own, so trust has a floor of 0.5 however unsure the model is — the
+  on its own, so trust has a floor of 0.5 however unsure the model is, and the
   stub's `low_confidence` mode scored 0.625 and passed. Geometric says what I
   actually mean: both are necessary conditions and either one near zero takes the
   product with it. It also makes the hard-constraint veto fall out of the
@@ -439,8 +440,8 @@ ended up in the code.
   cancels in a ratio, so `depth_ratio` and `curvature_index` inherit only the
   landmark uncertainty. That's the entire argument for preferring ratios and it
   has a test rather than a comment.
-- **Calibration contributes a RELATIVE scale uncertainty** — corner error divided
-  by the target's span in pixels — not an absolute one. That's what makes
+- **Calibration contributes a RELATIVE scale uncertainty**, corner error divided
+  by the target's span in pixels, not an absolute one. That's what makes
   "extrapolating a 200 mm fish off a 40 mm marker costs accuracy" show up in the
   numbers instead of only in the prose.
 - **Condition factor uses centimetres.** Fulton's K is `100 * W(g) / L(cm)^3` and
@@ -455,7 +456,7 @@ ended up in the code.
   fish there is no way to reach the CULL branch from the CLI or the UI at all,
   so the routing logic would ship with one of its three outcomes never executed
   outside a unit test. It bows the midline by 0.10 of body length, which is over
-  the placeholder cull threshold of 0.06 — that number exists to make the branch
+  the placeholder cull threshold of 0.06. That number exists to make the branch
   reachable, not because a real fish bends by 10%.
 - **The stub's `low_confidence` range is 0.15–0.35.** It was 0.22–0.45, which sat
   close enough to the review threshold that the routing test would have been a
@@ -483,7 +484,7 @@ ended up in the code.
   the machine's verdict and that signal is gone forever.
 - **`check_same_thread=False` plus an explicit lock per connection.** FastAPI runs
   `def` endpoints in a threadpool, so one connection legitimately gets used from
-  several threads and sqlite3's default turns that into a hard error — which is
+  several threads and sqlite3's default turns that into a hard error, which is
   exactly what happened the first time the API served a request. Turning the
   check off without a lock would trade a loud failure for interleaved cursors.
 
@@ -495,15 +496,15 @@ ended up in the code.
   use it too.
 - **The three capture functions validate eagerly.** Written as generators, "no
   such file" wasn't raised until the first `next()`, which is inside the
-  pipeline's loop and well past the CLI's error handling — so `python -m
+  pipeline's loop and well past the CLI's error handling, so `python -m
   cli.batch nope.mp4` crashed with a traceback instead of exiting 2 with a
   message. A test caught it. They're now plain functions returning a generator.
 - **Frames are downscaled to `capture.max_long_edge_px` before anything sees
-  them**, and every coordinate in the system — including in the database — is in
+  them**, and every coordinate in the system, including in the database, is in
   downscaled pixels. Without it the timing numbers from a 4K video and a 720p
   webcam aren't comparable and the whole per-stage latency story falls apart.
 - **`--stride` on the batch CLI.** A 30 fps video of one fish on a tray is 30
-  near-identical rows per second. This is NOT fish tracking — there's no notion
+  near-identical rows per second. This is NOT fish tracking. There's no notion
   of the same fish across frames anywhere in this project, and the spec doesn't
   ask for one. Each frame is an independent grading event.
 - **Frames with no detection don't get a database row.** Thousands of empty rows
@@ -523,13 +524,13 @@ ended up in the code.
   lot of machinery for one operator looking at one tray.
 - **A slow websocket client is dropped, not queued.** A live view showing a frame
   from thirty seconds ago is worse than one that reconnects.
-- **`live:` section added to `config.yaml`** — source, fps, loop — so the server
+- **`live:` section added to `config.yaml`** (source, fps, loop) so the server
   has something to grade on a fresh clone without a hidden default.
 - **`cli/make_sample.py` exists and isn't in the spec.** The README has to get
   someone from clone to running demo in five minutes and there's no dataset in
   the repo, so there has to be something to point at. It renders a card on a
-  moving background. **There is no fish in those frames** — the stub doesn't look
-  at the image — so a run over it exercises real calibration geometry against a
+  moving background. **There is no fish in those frames**, and the stub doesn't
+  look at the image, so a run over it exercises real calibration geometry against a
   fake animal, and the file says so in its docstring.
 - **The correction endpoint accepts REVIEW as a human verdict.** "I looked and I
   still can't tell" is a real answer and it's different from never having looked.
@@ -539,12 +540,12 @@ ended up in the code.
 - **Dependencies added: `torch==2.13.0`, `torchvision==0.28.0`,
   `ultralytics==8.4.135`, `websockets==17.1`.** Installed under a constraints file
   so the existing opencv 5.0.0.93 and numpy 2.5.2 pins weren't churned; they
-  weren't. torch 2.13 has working MPS on this machine — verified, not assumed.
+  weren't. torch 2.13 has working MPS on this machine, verified, not assumed.
   The app runs without any of the first three: `pipeline/detect_yolo.py` is
   imported lazily and `detector.backend` defaults to `stub`.
 - **`fliplr=0.0` and an identity `flip_idx`.** The one genuinely important
   training decision here. Ultralytics flips images horizontally by default and
-  permutes keypoints through `flip_idx` to match, which is right for people —
+  permutes keypoints through `flip_idx` to match, which is right for people,
   a flip swaps left and right wrists. For a fish in lateral view a flip maps the
   snout onto the tail, and there is no permutation of these twelve landmarks that
   expresses that. Leave the default on and half the training targets are wrong.
@@ -557,12 +558,12 @@ ended up in the code.
   YOLO-pose labels, real training on MPS with amp=False. **The resulting model
   has learned to find a polygon and its metrics say nothing about fish.** They're
   labelled as such and they should never be quoted. That model has since been
-  replaced by one trained on real fish — see the Phase 2 section at the top.
+  replaced by one trained on real fish. See the Phase 2 section at the top.
 - **`fetch_roboflow` uses urllib and the documented REST endpoints**, not the
   `roboflow` pip package. It's two requests; a dependency whose only job is to
   make two requests isn't worth it.
 - **`detect_yolo.py` treats a (0, 0) keypoint as absent.** Ultralytics writes
-  (0, 0) for a keypoint it didn't place, which is a real coordinate — the
+  (0, 0) for a keypoint it didn't place, which is a real coordinate, so the
   top-left corner of the image. Read as a landmark it puts a snout in the corner
   of the frame at full confidence.
 - **One fish per frame: the highest-confidence detection wins.** Two overlapping
@@ -571,7 +572,7 @@ ended up in the code.
 ### Follow-ups from the first read-through
 
 - **`store.db.constraint_counts()` added.** I reported the per-constraint tally
-  from the YOLO run by hand and got it wrong — counted joined strings, so
+  from the YOLO run by hand and got it wrong. I counted joined strings, so
   multi-failure rows were bucketed together and no-failure rows appeared as an
   empty key. Flattening is the only
   correct way to read that column so it lives in one function now, and the batch
@@ -582,7 +583,7 @@ ended up in the code.
   settings.json outside this repo) with the task name inserted, so
   `project="runs/pose"` produced `runs/pose/runs/pose/smoke`. Cosmetic in effect,
   but it also meant the output directory depended on a global config file that
-  isn't in the repo — on another machine it would land somewhere else entirely.
+  isn't in the repo, and on another machine it would land somewhere else entirely.
 - **The README said `tests/ 104 tests` in the layout block and 116 everywhere
   else.** Both were true (104 run without torch) and the layout block now says
   so instead of looking like a typo.

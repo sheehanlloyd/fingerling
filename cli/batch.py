@@ -21,7 +21,7 @@ from pipeline.config import load_config, resolve_path
 from pipeline.pipeline import Pipeline
 from store import db as store_db
 
-# What lands in the CSV. Not every DB column — landmarks_json is thousands of
+# What lands in the CSV. Not every DB column, since landmarks_json is thousands of
 # characters and belongs in the database, not in a spreadsheet. The timing
 # columns are split out of latency_ms_json into real columns because the whole
 # point of a CSV is that someone can pivot it.

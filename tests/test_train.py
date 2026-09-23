@@ -5,7 +5,7 @@ the app is meant to run without them.
 
 The adapter tests that need weights look for the smoke-test run
 (`runs/pose/**/weights/best.pt`) and skip if it isn't there. That model was
-trained on geometric polygons and knows nothing about fish — it's used here to
+trained on geometric polygons and knows nothing about fish. It's used here to
 prove the PARSING is right, which is the only thing tests in this file can prove
 while the real dataset is blocked.
 """
@@ -62,7 +62,7 @@ def test_the_dataset_yaml_declares_the_schema_we_actually_use(synth):
 def test_flip_index_is_the_identity_and_that_is_deliberate(synth):
     """A horizontal flip of a fish in lateral view maps the snout onto the tail.
     No permutation of these landmarks expresses that, so flip augmentation has to
-    be off — identity flip_idx here, fliplr=0.0 in eval/train.py. Get this wrong
+    be off: identity flip_idx here, fliplr=0.0 in eval/train.py. Get this wrong
     and half the training targets are simply incorrect."""
     doc = yaml.safe_load((synth / "data.yaml").read_text())
     assert doc["flip_idx"] == list(range(N_LANDMARKS))
@@ -92,7 +92,7 @@ def test_train_and_val_splits_both_exist_and_do_not_share_files(synth):
 
 
 # ---------------------------------------------------------------------------
-# the keypoint remap — pure logic, no model needed
+# the keypoint remap, pure logic, no model needed
 # ---------------------------------------------------------------------------
 
 

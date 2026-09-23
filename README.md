@@ -3,7 +3,7 @@
 A single-station fish grading app. Camera or video in, real-world measurements
 and a sort decision out.
 
-Fish farms still grade by hand — net a fish, measure it with calipers, eyeball it
+Fish farms still grade by hand. Net a fish, measure it with calipers, eyeball it
 for deformities, write it down. About five minutes a fish, so farms only ever
 measure a tiny sample of their stock, and you can't run a breeding program on a
 sample that small.
@@ -16,7 +16,7 @@ measurement; and the data the model trained on is never the data it sees.
 
 ![The trained model on held-out test images](docs/images/real_model_predictions.jpg)
 
-Four landmarks per fish — snout, eye, dorsal origin, caudal fork — on trout parr
+Four landmarks per fish (snout, eye, dorsal origin, caudal fork) on trout parr
 the model has never seen. All three PASS. All three say "uncalibrated", because
 there's no calibration target in frame and the app won't print millimetres it
 can't defend.
@@ -41,7 +41,7 @@ flowchart LR
 
 Every stage is timed separately and the breakdown is stored per fish, so the
 latency table further down is measured rather than estimated. The operator
-correction is written beside the machine's decision, never over it — that pair
+correction is written beside the machine's decision, never over it. That pair
 is the training data for the next model.
 
 **Jump to:** [running it](#running-it) · [what's real](#whats-real-and-what-isnt) ·
@@ -65,7 +65,7 @@ can correct from, and an export button.
 
 ![The app grading the sample clip](docs/images/ui.png)
 
-The sample clip contains a calibration card and **no fish** — the stub detector
+The sample clip contains a calibration card and **no fish**. The stub detector
 doesn't look at the image, so that run exercises real calibration geometry
 against a fake animal. It exists so a fresh clone has something to point at.
 That's why the overlay above sits on a blank background and the card is the only
@@ -76,8 +76,8 @@ exercises the other half of the system:
 
 ![The review queue, with the failed constraints named](docs/images/ui_review.png)
 
-Trust drops to 0.00 — not because the model was unsure, landmark confidence is
-still 0.88, but because the geometry is impossible. The eye isn't between the
+Trust drops to 0.00, not because the model was unsure (landmark confidence is
+still 0.88) but because the geometry is impossible. The eye isn't between the
 snout and the operculum, the peduncle points are swapped, and the landmarks are
 degenerate. Every one of those is a named constraint, stored per record, and
 shown to the operator along with the buttons to overrule it. Catching
@@ -111,7 +111,7 @@ detector:
   backend: yolo
   weights: runs/pose/fishmeasure_grouped/weights/best.pt
 decide:
-  assess_deformity: false    # this model has no midline landmarks — see below
+  assess_deformity: false    # this model has no midline landmarks, see below
 ```
 
 ## What's real and what isn't
@@ -119,7 +119,7 @@ decide:
 | | |
 |---|---|
 | Calibration (card → homography → mm) | real, tested against synthetic scenes with known answers |
-| Landmark detection | **real** — yolo11n-pose fine-tuned on 176 images of trout parr |
+| Landmark detection | **real**, yolo11n-pose fine-tuned on 176 images of trout parr |
 | Measurement, uncertainty, trust, routing | real |
 | Millimetre accuracy on a photograph | **measured: 0.15 mm worst case on a good frame.** See below. |
 | Deformity / CULL | **not supported by the trained model.** See below. |
@@ -135,7 +135,7 @@ wrong. Full detail in [docs/DATASETS.md](docs/DATASETS.md) and
 I picked fishKeypoints in checkpoint 1 without reading its keypoint schema,
 because it was the only thing I could download without signing an agreement, and
 I wrote down at the time that this was a gamble. It lost. fishKeypoints is
-**aerial drone footage of wild fish schools** — twelve fish per frame, each about
+**aerial drone footage of wild fish schools**. Twelve fish per frame, each about
 20 pixels long, two keypoints each. It's a biomass-counting dataset.
 
 I switched to Fish Measurement: 245 images, one salmonid parr per frame in a
@@ -148,7 +148,7 @@ landmark by index. Changing schema was a rename table plus one added name.
 ### I nearly read the schema wrong
 
 The export ships no keypoint names at all, only `kpt_shape: [4, 3]`. Inferring
-them from summary statistics gave me a clean, confident, wrong answer — I had the
+them from summary statistics gave me a clean, confident, wrong answer. I had the
 tail as the snout. Rendering three images and looking at them fixed it.
 
 ![The four keypoints](docs/images/schema_4kp.jpg)
@@ -175,7 +175,7 @@ to the dorsal fin. The exception has snout and fork swapped.
 ### A millimetre figure was being written from a calibration known to be bad
 
 A test frame with no card in it found something card-shaped at obliquity 4.57 and
-a 21 px residual. The row was correctly tagged `calibration_reliable: 0` — and
+a 21 px residual. The row was correctly tagged `calibration_reliable: 0`, and
 `fork_length_mm: 84.42` went into the database anyway. The flag was right and
 nothing read it.
 
@@ -184,7 +184,7 @@ the code the whole time. Millimetres are now gated on `reliable`, not on
 `calibrated`. A number nobody should use shouldn't exist, rather than travelling
 next to a flag something else has to remember to check.
 
-### Tilt doesn't hurt accuracy — it hurts detection
+### Tilt doesn't hurt accuracy, it hurts detection
 
 `max_obliquity` was 2.0 and nothing was behind that number. Sweeping a synthetic
 scene from 1.00 to 1.71:
@@ -193,8 +193,8 @@ scene from 1.00 to 1.71:
 
 Error stays under 0.15 mm the whole way, because a homography undoes perspective
 properly. What breaks is detection: past ~1.43 a foreshortened coin stops being
-round enough to find, and past 1.71 the card isn't found. So it's set to 1.4 —
-not a measured failure point, just where the evidence stops.
+round enough to find, and past 1.71 the card isn't found. So it's set to 1.4.
+That isn't a measured failure point, just where the evidence stops.
 
 ## Numbers
 
@@ -216,11 +216,11 @@ Inference is 7.9 ms per image.
 **Don't read much into that 0.991.** The test set is 14 photographs. I can show
 you exactly how fragile a number that size is: on the original 25-image test
 split, deleting the single mislabelled image moved pose mAP50-95 from **0.9534 to
-0.9950** — 4.2 points, from one bad ground-truth label.
+0.9950**. That's 4.2 points, from one bad ground-truth label.
 
 Which also means the obvious comparison doesn't work. The leaky split scored
 0.953 and the clean split scored 0.991, and that is *not* evidence that fixing
-the leak helped — if anything it's the wrong direction. The mislabelled fish sat
+the leak helped. If anything it's the wrong direction. The mislabelled fish sat
 in the **old test split**, and the regrouping happened to put it in the **new
 training split**, so most of that gap is one bad label moving between buckets.
 
@@ -245,8 +245,8 @@ falls over on site, and this dataset is about as homogeneous as they come.
 | **total** | **13.24** | **22.63** |
 
 Milliseconds. Mean detect is 54.9 against a p50 of 9.87 because the first MPS
-inference pays for graph setup — exactly the thing a single average would hide,
-and the reason this stores p50 and p95 rather than an average.
+inference pays for graph setup. That's exactly the thing a single average would
+hide, and the reason this stores p50 and p95 rather than an average.
 
 Calibration got about 45% slower when the corner fix went in: fitting four edges
 to the intensity gradient costs more than nudging four corners. On the 1280 px
@@ -278,7 +278,7 @@ Two things about that table are worth more than the numbers.
 **The quality signal works, and the placeholder threshold turns out to be right.**
 `max_reprojection_residual_px` is 2.0 and was never more than a guess. Real
 frames land at 0.3–1.0 px on a hard table and 3–6 px on carpet, so the threshold
-sits cleanly between them — and the frames it accepts measure about three times
+sits cleanly between them, and the frames it accepts measure about three times
 better than the frames it rejects. That's the first actual evidence that the
 residual predicts measurement error rather than just being a number.
 
@@ -293,7 +293,7 @@ The first run on real photographs came back **+2.9% high**, and the outline
 residual was 14–24 px on every frame. Chasing it turned up the largest accuracy
 bug in the repo.
 
-A credit card has rounded corners — ID-1 specifies a 3.18 mm radius. So
+A credit card has rounded corners. ID-1 specifies a 3.18 mm radius, so
 `approxPolyDP` returns four vertices sitting *on the arcs*, inset from where the
 edges would actually meet by 0.293r = **0.93 mm**. The solver was being told
 those four points span 85.60 mm when they really spanned 83.74 mm of card, so
@@ -301,7 +301,7 @@ every millimetre it produced afterwards was 2.2% too big.
 
 What made it findable: **zero of 6,460 outline points fell inside the ideal
 rectangle.** Every one was outside, by a median of 0.929 mm. A uniform one-sided
-offset is what an inset corner looks like — a bent card or a bad lens would
+offset is what an inset corner looks like. A bent card or a bad lens would
 scatter to both sides. 0.93 mm predicted from the corner radius, 0.929 mm
 measured.
 
@@ -321,7 +321,7 @@ rectangles.
 ### Measurement accuracy, on synthetic scenes
 
 0.09 mm on known diameters, across obliquity 1.00 to 1.40. That number is about
-the geometry being right — no lens, no sensor noise, no coin thickness, no
+the geometry being right. No lens, no sensor noise, no coin thickness, no
 lighting. Don't quote it as accuracy.
 
 ## What it can't do
@@ -340,7 +340,7 @@ lighting. Don't quote it as accuracy.
   (A stereo or depth camera is the real fix.)
 - **One fish per frame.** Highest-confidence detection wins. Two overlapping fish
   is a documented failure, not something this silently averages. There's no
-  tracking anywhere — each frame is an independent grading event.
+  tracking anywhere, and each frame is an independent grading event.
 - **The card aspect filter is all that identifies a card.** Anything bright,
   convex, four-sided and roughly 1.586:1 gets measured against. That's how the
   84.42 mm above happened.
@@ -351,19 +351,19 @@ lighting. Don't quote it as accuracy.
 - **The ArUco path doesn't run.** `marker_length_mm` is null in config and the
   code refuses to invent a scale. The card path works.
 - **Thresholds.** Most things in `config.yaml` are still marked PLACEHOLDER.
-  Four aren't any more — the eye and dorsal position ranges came off 245
+  Four aren't any more. The eye and dorsal position ranges came off 245
   ground-truth annotations, and `max_obliquity` came off the sweep above.
 
 ## Layout
 
 ```
 pipeline/    capture, detect, calibrate, measure, trust, decide, wiring, overlay
-             landmarks.py holds the schema — the one place names map to indices
+             landmarks.py holds the schema, the one place names map to indices
 api/         FastAPI server, WebSocket streaming, REST
 store/       sqlite, one table, no ORM
 cli/         batch.py (video -> csv), make_sample.py (demo frames)
 eval/        dataset.py (fetch, leakage audit, regroup), train.py, validate_mm.py
-web/         index.html — the whole frontend, one file, no build step
+web/         index.html, the whole frontend, one file, no build step
 tests/       136 tests; 121 of them run without torch installed
 docs/        CALIBRATION.md, DATASETS.md, DECISIONS.md, images/
 ```
@@ -374,7 +374,7 @@ and testable without a server. The batch CLI and the web server run the same
 
 Records keep the raw landmarks and the frame path, not just the derived numbers.
 If someone questions a grade I need to show exactly why the system said what it
-said. A human correction never overwrites the machine's decision — the pair is
+said. A human correction never overwrites the machine's decision. The pair is
 the training data for the next model.
 
 ## Tests
@@ -385,17 +385,17 @@ pytest -v
 
 The ones worth reading:
 
-- `tests/test_calibrate.py` — calibration is the part most likely to be silently
+- `tests/test_calibrate.py`. Calibration is the part most likely to be silently
   wrong, so it gets the most tests.
-- `test_subpixel_refinement_beats_the_raw_threshold` — guards a bug this repo's
+- `test_subpixel_refinement_beats_the_raw_threshold` guards a bug this repo's
   own synthetic harness found in itself: thresholding after a blur put every
   measured boundary ~0.41 mm inside the true edge.
-- `test_a_naive_pixels_per_mm_would_fail_the_tilted_case` — checks that the
+- `test_a_naive_pixels_per_mm_would_fail_the_tilted_case` checks that the
   tilted-measurement test actually proves something, by confirming a constant
   scale factor really would fail the same scene.
-- `test_a_hash_check_would_not_have_caught_this` — why the split leak needed a
-  filename rule rather than deduplication.
-- `test_not_assessing_deformity_is_stated_on_every_record_it_affects` — the
+- `test_a_hash_check_would_not_have_caught_this`, on why the split leak needed
+  a filename rule rather than deduplication.
+- `test_not_assessing_deformity_is_stated_on_every_record_it_affects`. The
   switch that makes PASS reachable must not become a silent way to stop culling.
 
 Every test is built from an answer I chose in advance. A 200 mm fish has to

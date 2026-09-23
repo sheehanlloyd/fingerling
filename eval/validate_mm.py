@@ -18,7 +18,7 @@ Three things I want to be honest about before anyone reads a number off this.
 
 FIRST, THE COINS ARE NOT ON THE CALIBRATION PLANE. A card is about 0.76 mm thick
 and a coin about 1.75 mm, so a coin's top face sits roughly 1 mm nearer the
-camera than the card's. That's a magnification error of about h/D — a tenth of a
+camera than the card's. That's a magnification error of about h/D, a tenth of a
 percent at arm's length. It is a BIAS, not noise, so averaging more shots will
 not remove it. Pass --working-distance-mm and this prints what that bias should
 be, next to the bias actually measured. If those two disagree wildly, something
@@ -27,7 +27,7 @@ other than coplanarity is wrong.
 SECOND, MATCHING IS BY RANK, NOT BY NEAREST VALUE. Given three expected objects
 and three detections, I sort both by size and pair them in order. Nearest-value
 matching would assign every detection to whichever truth it's closest to, which
-drags the reported error toward zero by construction — a broken measurement would
+drags the reported error toward zero by construction, because a broken measurement would
 look good. Rank matching can still be wrong if two objects are close enough in
 size to swap, so the summary says so when that's a live risk.
 
@@ -108,7 +108,7 @@ def find_circular_contours(
     This used to threshold once with Otsu and it failed on the first real
     photograph I took. Otsu picks ONE threshold and assumes the image is
     bimodal. A tabletop isn't: that scene had grey carpet at 80, one loonie at
-    136, another loonie at 187 and the card at 227, and Otsu landed on 146 —
+    136, another loonie at 187 and the card at 227, and Otsu landed on 146,
     straight between the two coins. One coin went to the background, the other
     merged with the card, and the detector reported zero.
 
@@ -167,7 +167,7 @@ def find_circular_contours(
                 found.append((float(cx), float(cy), area, pts))
 
     # One object shows up at many levels. Cluster by centre and keep the MEDIAN
-    # area from each cluster rather than the biggest or the roundest — the
+    # area from each cluster rather than the biggest or the roundest. The
     # extremes are the levels where the threshold was starting to eat into the
     # object or bleed out of it, and the middle is the stable part.
     clusters: list[list[tuple[float, float, float, np.ndarray]]] = []
@@ -197,7 +197,7 @@ def equivalent_diameter_mm(contour_px: np.ndarray, calib) -> float:
 
     Mapping to millimetres BEFORE measuring is the point. A coin viewed at an
     angle is an ellipse in the image; the homography undoes exactly that, so in
-    the board plane it is a circle again — provided it lies on the board plane,
+    the board plane it is a circle again, provided it lies on the board plane,
     which is the assumption this whole module exists to put a number on.
     """
     pts_mm = calib.to_mm(contour_px)
@@ -224,11 +224,11 @@ def validate_image(
 
     calib = calibrate(frame, settings)
     if not calib.calibrated:
-        return [], [f"{path.name}: uncalibrated — {calib.reason}"]
+        return [], [f"{path.name}: uncalibrated, {calib.reason}"]
     if not calib.reliable:
         notes.append(
             f"{path.name}: calibration is UNRELIABLE "
-            f"(obliquity {calib.obliquity:.2f}, residual {calib.residual_px}) — "
+            f"(obliquity {calib.obliquity:.2f}, residual {calib.residual_px}). "
             f"measurements included but flagged"
         )
 
@@ -259,13 +259,13 @@ def validate_image(
         if rejected:
             notes.append(
                 f"{path.name}: discarded {len(rejected)} detection(s) too far from any "
-                f"expected size to be one ({', '.join(f'{d:.1f}mm' for d in rejected)}) — "
+                f"expected size to be one ({', '.join(f'{d:.1f}mm' for d in rejected)}). "
                 f"counted as detection failures, not measurement error"
             )
 
     if len(measured) != len(truths):
         notes.append(
-            f"{path.name}: expected {len(truths)} object(s), matched {len(measured)} — "
+            f"{path.name}: expected {len(truths)} object(s), matched {len(measured)}. "
             f"reporting NO measurements for this frame. Pairing a wrong number of "
             f"detections by rank would attribute one object's size to another and "
             f"call the difference measurement error."
@@ -411,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
         print()
 
     if not rows:
-        print("Nothing measured. Most likely the card wasn't found — check that it's")
+        print("Nothing measured. Most likely the card wasn't found. Check that it's")
         print("fully in frame, not touching the edge, and against a contrasting surface.")
         return 1
 
@@ -446,7 +446,7 @@ def main(argv: list[str] | None = None) -> int:
     if risky:
         print(
             "\nrank matching warning: these are close enough in true size that a "
-            "swap is possible at the observed error spread — " + "; ".join(risky)
+            "swap is possible at the observed error spread: " + "; ".join(risky)
         )
 
     out = write_csv(rows, args.out)

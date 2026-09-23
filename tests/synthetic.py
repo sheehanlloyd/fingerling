@@ -32,7 +32,7 @@ def quad(cx: float, cy: float, w: float, h: float) -> np.ndarray:
 
 
 def rotate(q: np.ndarray, degrees: float) -> np.ndarray:
-    """Rotate a quad about its own centre. A rigid motion — no new perspective."""
+    """Rotate a quad about its own centre. A rigid motion, so no new perspective."""
     c = q.mean(axis=0)
     t = np.deg2rad(degrees)
     R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
@@ -120,7 +120,7 @@ def card_scene(
 
     bow_mm bends the card's long edges outward by that many millimetres at their
     midpoint before warping. A real card that isn't flat, or a lens with barrel
-    distortion, looks like this — and it's the thing the outline residual is
+    distortion, looks like this, and it's the thing the outline residual is
     supposed to notice.
     """
     scale = 8.0  # source pixels per mm, generous so the render is clean
@@ -174,7 +174,7 @@ def card_and_coins_scene(
 
     That last part is what makes this a maths test rather than a measurement:
     there is no coin thickness here, no lens, no sensor. If eval/validate_mm
-    can't recover these diameters to a hair, the geometry is wrong — and a
+    can't recover these diameters to a hair, the geometry is wrong, and a
     photograph would never tell me that, because a photograph has no ground
     truth in it.
     """

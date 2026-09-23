@@ -40,7 +40,7 @@ TOTAL_LENGTH_MM = 222.0
 def scale_calibration(
     mm_per_px: float = 0.5, target_span_px: float = 400.0, residual_px: float = 0.0
 ) -> Calibration:
-    """A calibration that is exactly a uniform scale — no rotation, no tilt.
+    """A calibration that is exactly a uniform scale, with no rotation and no tilt.
 
     Real calibrations aren't this clean, but measurement is not the place to test
     calibration; tests/test_calibrate.py already does that against rendered

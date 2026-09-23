@@ -2,7 +2,7 @@
 
 Lives in pipeline/ and not api/ because pipeline/ is not allowed to import api/,
 and the batch CLI wants to dump annotated frames too. It's an extra module that
-isn't in the spec's architecture listing — logged in docs/DECISIONS.md.
+isn't in the spec's architecture listing, and it's logged in docs/DECISIONS.md.
 
 Colour carries the one thing an operator needs at a glance: the decision. Green
 passes, red culls, amber goes to a human. Landmark dots are shaded by their own
@@ -25,7 +25,7 @@ DECISION_BGR = {
 }
 
 # Body outline drawn as a path through the landmarks, so the overlay reads as a
-# fish rather than a cloud of dots. Purely cosmetic — nothing measures this.
+# fish rather than a cloud of dots. Purely cosmetic, nothing measures this.
 OUTLINE = (
     "snout_tip", "dorsal_origin", "dorsal_apex", "dorsal_insertion",
     "peduncle_dorsal", "caudal_tip", "peduncle_ventral", "ventral_margin",
@@ -39,7 +39,7 @@ def draw(
     calib: Any = None,
     label_lines: list[str] | None = None,
 ) -> np.ndarray:
-    """Return an annotated copy. Never mutates the frame it was given — the
+    """Return an annotated copy. Never mutates the frame it was given, because the
     pipeline may still want the clean one to save."""
     out = frame.copy()
     colour = DECISION_BGR.get(decision or "", (200, 200, 200))

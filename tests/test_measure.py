@@ -86,7 +86,7 @@ def test_uncalibrated_still_reports_pixels_and_says_why_millimetres_are_missing(
 
 
 # ---------------------------------------------------------------------------
-# curvature — the deformity proxy
+# curvature, the deformity proxy
 # ---------------------------------------------------------------------------
 
 
@@ -102,7 +102,7 @@ def test_a_bent_fish_scores_well_above_a_straight_one():
 
 
 def test_curvature_scales_with_how_bent_the_fish_is():
-    """Not just "bent is bigger" — twice the bow should read about twice the
+    """Not just "bent is bigger". Twice the bow should read about twice the
     index, because the index is a linear ratio of deviation to length."""
     a = measure_traits(F.place(bend_mm=10.0), F.scale_calibration(), SET)
     b = measure_traits(F.place(bend_mm=20.0), F.scale_calibration(), SET)
@@ -185,7 +185,7 @@ def test_no_weight_means_no_condition_factor_and_a_reason():
 
 
 def test_a_missing_landmark_nulls_only_the_traits_that_need_it():
-    """Drop the fork point and fork length has to go away — not silently become
+    """Drop the fork point and fork length has to go away, not silently become
     total length. Body depth doesn't depend on it and must survive."""
     m = measure_traits(F.place(drop=("caudal_fork",)), F.scale_calibration(), SET)
     assert m.fork_length_mm is None

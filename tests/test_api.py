@@ -151,7 +151,7 @@ def test_correcting_a_fish_records_the_human_and_removes_it_from_the_queue(serve
     assert updated["human_corrected"] == 1
     assert updated["human_decision"] == "PASS"
     assert updated["human_note"] == "fine"
-    # The machine's own verdict must survive — it's half the training pair.
+    # The machine's own verdict must survive. It's half the training pair.
     assert updated["decision"] == "REVIEW"
 
     still = [r["id"] for r in get(server, "/api/records?needs_review=true&limit=50")["records"]]
@@ -190,7 +190,7 @@ def test_websocket_delivers_a_frame_and_a_record(server):
     """The transport question from DECISIONS.md, answered by actually connecting.
 
     If `websockets` weren't installed, uvicorn would refuse this handshake and
-    this test would fail — which is the point of testing it over a real socket
+    this test would fail, which is the point of testing it over a real socket
     rather than through TestClient.
     """
     import asyncio
