@@ -375,6 +375,144 @@ def _card_candidates(frame: np.ndarray) -> list[np.ndarray]:
     return out
 
 
+def _corners_from_edges(
+    frame: np.ndarray,
+    quad: np.ndarray,
+    outline: np.ndarray,
+    corner_radius_mm: float = CARD_CORNER_RADIUS_MM,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Recover the card's true sharp corners by fitting its four straight edges.
+
+    THIS IS THE BIGGEST ACCURACY FIX IN THE FILE and it took real photographs to
+    find. A card has rounded corners — ID-1 specifies a 3.18 mm radius — so
+    `approxPolyDP` returns four vertices that sit ON the arcs, not where the
+    edges would meet if extended. Each vertex is inset from the true corner by
+    about r(sqrt(2) - 1) along the diagonal, which is 0.293r perpendicular to
+    each edge: 0.93 mm for an ID-1 card.
+
+    That is not a cosmetic problem. The solver is told those four points span
+    85.60 mm when they really span 85.60 - 2(0.93) = 83.74 mm of card, so every
+    millimetre it produces afterwards is too big by 85.60/83.74 = 2.2%.
+
+    How I found it: on four real photographs, ZERO of 6,460 outline points fell
+    inside the ideal rectangle — every single one was outside it, by a median of
+    0.929 mm. A uniform one-sided offset is what an inset corner looks like; a
+    bent card or a bad lens would scatter to both sides. Measured over-read on
+    those shots was +2.9%, against +2.2% predicted from the geometry alone.
+
+    The fix is the standard one: throw away the arcs, fit a line through each
+    straight edge, and intersect consecutive lines. The corners come from
+    hundreds of points each instead of one, so this is also less noisy than the
+    sub-pixel nudge it replaces.
+
+    The lines are NOT fitted to the contour points. A contour is wherever the
+    segmentation happened to put it, and `_card_candidates` dilates its Canny
+    mask, which pushes the traced outline about 2 px outward — a bias that
+    `cornerSubPix` used to hide and that this function would otherwise inherit.
+    So each contour point is first pushed along the edge normal onto the peak of
+    the intensity gradient, with a parabolic sub-pixel fit, and the line is
+    fitted to those. That reads the edge off the photograph rather than off a
+    threshold, so it doesn't matter how the mask was made.
+
+    Returns (corners, edge_points) or None if any edge has too few points to fit,
+    in which case the caller keeps the original corners. The edge points come
+    back because the residual has to be measured against the same thing the
+    corners were fitted to — measuring a gradient-fitted rectangle against a
+    mask-derived contour just re-measures how much the mask was dilated.
+    """
+    pts = np.asarray(outline, dtype=np.float64).reshape(-1, 2)
+    if len(pts) < 64:
+        return None
+
+    # Rough scale from the quad itself: good enough to know how much of each
+    # edge is arc, which is all it's used for.
+    side_a = (np.linalg.norm(quad[0] - quad[1]) + np.linalg.norm(quad[3] - quad[2])) / 2
+    side_b = (np.linalg.norm(quad[0] - quad[3]) + np.linalg.norm(quad[1] - quad[2])) / 2
+    long_px, short_px = max(side_a, side_b), min(side_a, side_b)
+    if short_px < 1e-6:
+        return None
+    px_per_mm = long_px / max(CARD_ID1_WIDTH_MM, CARD_ID1_HEIGHT_MM)
+    exclude_px = corner_radius_mm * px_per_mm * 1.8
+
+    grey = frame if frame.ndim == 2 else cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    grey = cv2.GaussianBlur(grey.astype(np.float32), (5, 5), 0)
+    gx = cv2.Sobel(grey, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(grey, cv2.CV_32F, 0, 1, ksize=3)
+    grad = cv2.magnitude(gx, gy)
+
+    def sample(p: np.ndarray) -> np.ndarray:
+        return cv2.remap(
+            grad,
+            p[:, 0].astype(np.float32).reshape(-1, 1),
+            p[:, 1].astype(np.float32).reshape(-1, 1),
+            cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE,
+        ).ravel()
+
+    search_px = 4.0
+    offsets = np.arange(-search_px, search_px + 0.5, 0.5)
+
+    lines = []
+    refined: list[np.ndarray] = []
+    for i in range(4):
+        a, b = quad[i], quad[(i + 1) % 4]
+        ab = b - a
+        n = float(np.hypot(*ab))
+        if n < 1e-6:
+            return None
+        u = ab / n
+        nrm = np.array([-u[1], u[0]])
+        t = (pts - a) @ u                       # position along the edge
+        perp = np.abs((pts - a) @ nrm)
+        on_edge = (
+            (t > exclude_px) & (t < n - exclude_px)   # not on either arc
+            & (perp < 0.04 * n)                       # actually near this edge
+        )
+        if on_edge.sum() < 16:
+            return None
+        e = pts[on_edge]
+
+        # Push each point onto the gradient ridge along the normal.
+        profiles = np.stack([sample(e + nrm * d) for d in offsets], axis=1)
+        k = profiles.argmax(axis=1)
+        interior = (k > 0) & (k < len(offsets) - 1)
+        shift = offsets[k].astype(np.float64)
+        if interior.any():
+            ki = k[interior]
+            rows = np.flatnonzero(interior)
+            y0 = profiles[rows, ki - 1]
+            y1 = profiles[rows, ki]
+            y2 = profiles[rows, ki + 1]
+            denom = y0 - 2.0 * y1 + y2
+            frac = np.where(np.abs(denom) < 1e-9, 0.0, 0.5 * (y0 - y2) / denom)
+            shift[rows] = offsets[ki] + np.clip(frac, -1.0, 1.0) * 0.5
+        e = e + nrm * shift[:, None]
+        refined.append(e)
+
+        # Total least squares: the principal direction of the edge points.
+        c = e.mean(axis=0)
+        _, _, vt = np.linalg.svd(e - c, full_matrices=False)
+        lines.append((c, vt[0]))
+
+    corners = []
+    for i in range(4):
+        (p1, d1), (p2, d2) = lines[i - 1], lines[i]
+        A = np.array([d1, -d2]).T
+        det = float(np.linalg.det(A))
+        if abs(det) < 1e-9:
+            return None                          # parallel edges: not a quad
+        st = np.linalg.solve(A, p2 - p1)
+        corners.append(p1 + st[0] * d1)
+    corners = np.array(corners, dtype=np.float64)
+
+    # Sanity: the fitted corners must be near the ones we started from. If the
+    # fit has wandered further than a corner radius or two, something else got
+    # fitted and the original quad is the safer answer.
+    if np.max(np.linalg.norm(corners - quad, axis=1)) > 4.0 * corner_radius_mm * px_per_mm:
+        return None
+    return corners, np.vstack(refined)
+
+
 def _refine_corners(frame: np.ndarray, quad: np.ndarray, max_shift_px: float = 4.0) -> np.ndarray:
     """Nudge integer contour corners onto the actual intensity corner.
 
@@ -448,7 +586,17 @@ def find_card(
         ):
             continue
 
-        quad = _refine_corners(frame, quad)
+        # Prefer corners recovered by fitting the four straight edges: a card's
+        # corners are rounded, so approxPolyDP's vertices sit on the arcs and are
+        # inset by about 0.93 mm, which becomes a 2.2% scale error. Fall back to
+        # the sub-pixel nudge when the edge fit can't run (too few points, a
+        # partially occluded edge).
+        outline = contour.reshape(-1, 2).astype(np.float64)
+        fitted = _corners_from_edges(frame, quad, outline)
+        if fitted is not None:
+            quad, outline = fitted
+        else:
+            quad = _refine_corners(frame, quad)
 
         # Average the two opposite sides — under perspective they differ, and the
         # mean is a better stand-in for the true edge length than either one.
@@ -474,7 +622,7 @@ def find_card(
         board = np.array(
             [[0.0, 0.0], [bw, 0.0], [bw, bh], [0.0, bh]], dtype=np.float64
         )
-        best = (quad, board, contour.reshape(-1, 2).astype(np.float64))
+        best = (quad, board, outline)
         best_area = area
 
     return best

@@ -172,25 +172,77 @@ each corner. This turned out NOT to be what was inflating my residual — the re
 cause was the outline bleeding into carpet fibres — but it's a genuine bug that
 every real card would hit and no synthetic scene could show.
 
-### The result, and what I'd do next
+### Rounded card corners were costing 2.2% on every measurement
 
-±1 mm on a 26.5 mm object, against 0.15 mm on synthetic scenes. Both frames were
-flagged unreliable before I measured anything, and both then produced errors
-about five times the synthetic baseline, so the quality signal was right — though
-two frames is evidence, not proof.
+The first real photographs came back +2.9% high with outline residuals of 14-24
+px. I guessed the carpet was to blame, reshot on a hard table, and the residual
+did NOT drop. Good: the hypothesis was wrong and the reshoot said so.
 
-The shots were taken on carpet, which is the worst available surface: a card on a
-compressible pile isn't flat and isn't coplanar with coins that sink into it
-differently. Coplanarity accounts for only about a fifth of the measured bias
-(+0.29% predicted at 350 mm, +1.27% measured), and the two coins in one frame
-disagreed by 1.7 mm depending on where they sat in the image, which points at
-lens distortion.
+What it actually was: `approxPolyDP` returns four vertices that sit on a card's
+rounded corners rather than where its edges would meet. ID-1 specifies a 3.18 mm
+radius, so each vertex is inset by 0.293r = 0.93 mm perpendicular to each edge.
+The solver was told those points span 85.60 mm when they spanned 83.74 mm of
+card, which is a 2.2% scale error on everything downstream.
 
-Next experiment is one photo session on a hard matte uniform surface. If the
-residual drops and the error drops with it, that's a real result about the
-quality signal. Until then `max_reprojection_residual_px` stays a PLACEHOLDER —
-2.0 rejects every real photograph I have, and I won't tune it against two shots
-taken on carpet.
+The diagnostic that found it: **zero of 6,460 outline points fell inside the
+ideal rectangle**, all of them outside by a median of 0.929 mm. A uniform
+one-sided offset is an inset corner; a bent card or a bad lens scatters both
+ways. 0.93 mm predicted from the corner radius against 0.929 mm measured is not
+a coincidence.
+
+Fixed by fitting a line along each of the four straight edges and intersecting
+them. Two details matter. The arcs are excluded, so only genuinely straight edge
+is fitted. And the lines are fitted to the **intensity gradient**, not to the
+contour — `_card_candidates` dilates its Canny mask, which pushes the traced
+outline about 2 px outward, a bias `cornerSubPix` had been masking and that a
+contour-based fit would have inherited. The residual is measured against those
+same gradient-refined points, because measuring a gradient-fitted rectangle
+against a mask-derived contour just re-measures the dilation.
+
+Bias on the hard-table shots: **+0.780 mm to +0.115 mm**. Residual: 14-24 px to
+under 1 px.
+
+Not one synthetic scene in this repo could have caught it. They all render
+sharp-cornered rectangles.
+
+### The residual threshold was a placeholder and turns out to be right
+
+With the corner bug fixed, `max_reprojection_residual_px: 2.0` separates the real
+frames cleanly:
+
+| | residual | reliable | worst error |
+|---|---|---|---|
+| hard table | 0.29 / 0.97 px | yes | 0.149 mm |
+| carpet | 3.05 / 5.88 px | no | 0.404 mm |
+
+Frames it accepts measure about three times better than frames it rejects. That's
+the first evidence that the residual predicts measurement error rather than just
+being a number I report. It also means the carpet hypothesis was right after all
+— the corner bug was just an order of magnitude bigger and hiding it.
+
+I'm still leaving the value marked as it is rather than declaring it measured.
+Four photographs, one camera, two surfaces.
+
+### The result
+
+**0.15 mm worst case on a 26.5 mm object**, on frames that pass their own quality
+check. Synthetic scenes give 0.09 mm, so real photographs now cost less than a
+tenth of a millimetre over a rendered one — which was not true before the corner
+fix, when they cost 0.8 mm.
+
+The coplanarity prediction closes too: +0.29% expected at 350 mm working
+distance, +0.43% measured. That's the one error I worked out from geometry before
+measuring anything, and it's now the biggest single term left.
+
+### Bow sensitivity, measured
+
+Since the residual now means something, it's worth knowing what it catches. On a
+synthetic scene at the 2.0 px threshold: 0.0 mm bow gives 0.00 px, 1.0 mm gives
+1.41 px and is accepted, 1.5 mm gives 2.16 px and is rejected. So the detection
+limit is about 1.2-1.4 mm of bow. A card bowed less than a millimetre goes
+through, and its measurements are wrong by whatever that costs. That's in
+`test_bowed_card_produces_a_large_residual_and_is_rejected` rather than in a
+comment.
 
 ### Deliberately NOT done
 

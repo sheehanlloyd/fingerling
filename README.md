@@ -78,7 +78,7 @@ decide:
 | Calibration (card → homography → mm) | real, tested against synthetic scenes with known answers |
 | Landmark detection | **real** — yolo11n-pose fine-tuned on 176 images of trout parr |
 | Measurement, uncertainty, trust, routing | real |
-| Millimetre accuracy on a photograph | **measured: ~1 mm on a 26.5 mm object.** See below. |
+| Millimetre accuracy on a photograph | **measured: 0.15 mm worst case on a good frame.** See below. |
 | Deformity / CULL | **not supported by the trained model.** See below. |
 
 ## What I found
@@ -195,72 +195,91 @@ falls over on site, and this dataset is about as homogeneous as they come.
 
 | stage | p50 | p95 |
 |---|---|---|
-| detect | 9.72 | 17.48 |
-| calibrate | 1.60 | 2.51 |
+| detect | 9.87 | 18.36 |
+| calibrate | 2.51 | 5.14 |
 | measure | 0.03 | 0.04 |
-| trust | 0.08 | 0.13 |
-| **total** | **11.46** | **21.47** |
+| trust | 0.07 | 0.09 |
+| **total** | **13.24** | **22.63** |
 
-Milliseconds. Mean detect is 39.34 against a p50 of 9.72 because the first MPS
-inference pays for graph setup — exactly the thing a single average would hide.
+Milliseconds. Mean detect is 54.9 against a p50 of 9.87 because the first MPS
+inference pays for graph setup — exactly the thing a single average would hide,
+and the reason this stores p50 and p95 rather than an average.
 
-Calibration is much slower on the 1280 px sample clip (10.5 ms p50) than on these
-640 px frames, because it's searching a bigger image.
+Calibration got about 45% slower when the corner fix went in: fitting four edges
+to the intensity gradient costs more than nudging four corners. On the 1280 px
+sample clip it's 12.9 ms p50 rather than 2.5, because it's searching a bigger
+image for the card. That's the single most expensive thing in the pipeline and
+nobody has tried to make it faster.
 
 ### Measurement accuracy, on real photographs
 
-Two phone photos, one ID-1 card as the calibration target, two Canadian loonies
-(26.50 mm each) as the objects. Four measurements.
+Four phone photos: an ID-1 card as the calibration target and Canadian loonies
+(26.50 mm) as the objects. Two on a hard table, two on carpet.
 
-| | |
-|---|---|
-| bias (signed mean) | **+0.336 mm** (+1.27%) |
-| MAE | 0.756 mm |
-| RMS | 0.813 mm |
-| p95 absolute | 1.022 mm |
-| worst | 1.046 mm |
+| | hard table | carpet |
+|---|---|---|
+| outline residual | **0.29 / 0.97 px** | 3.05 / 5.88 px |
+| `calibration_reliable` | yes | **no** |
+| bias | **+0.115 mm** (+0.43%) | −0.258 mm (−0.97%) |
+| worst absolute error | **0.149 mm** | 0.404 mm |
 
 ```bash
 python -m eval.validate_mm shots/ --objects loonie,loonie --working-distance-mm 350
 ```
 
-So roughly **±1 mm on a 26.5 mm object**, about 4%. On synthetic scenes the same
-code recovers known diameters to 0.15 mm, so essentially all of that error is
-things a rendered scene doesn't have. That gap is the entire reason for taking
-the photos.
+So about **0.15 mm on a 26.5 mm object** when the frame passes its own quality
+check, which is around 0.5%.
 
-Two things worth saying about it.
+Two things about that table are worth more than the numbers.
 
-**The system called it.** Both frames were flagged
-`calibration_reliable: 0` — outline residual 17.9 px and 16.1 px against a
-threshold of 2.0 — and both then produced errors about five times worse than the
-synthetic baseline. The quality signal was right. In the pipeline proper those
-frames would have had their millimetres withheld entirely, which is the correct
-outcome. Two frames isn't proof that the residual predicts error, but it's the
-first evidence either way.
+**The quality signal works, and the placeholder threshold turns out to be right.**
+`max_reprojection_residual_px` is 2.0 and was never more than a guess. Real
+frames land at 0.3–1.0 px on a hard table and 3–6 px on carpet, so the threshold
+sits cleanly between them — and the frames it accepts measure about three times
+better than the frames it rejects. That's the first actual evidence that the
+residual predicts measurement error rather than just being a number.
 
-**I know why the shots were bad, and it's the surface.** They were taken on
-carpet. A card on a compressible pile isn't flat and isn't coplanar with coins
-that sink into it differently, which is exactly the assumption everything here
-rests on. The residual is the metric that notices a card that isn't flat, and it
-noticed.
+**The error model closes.** At 350 mm the coplanarity bias should be +0.29%,
+because a coin's face sits about 1 mm above a card's. Measured bias on the good
+frames is +0.43%. Same sign, same magnitude, and it's the one error I predicted
+from geometry before measuring anything.
 
-I can also rule out one suspect. At a 350 mm working distance the coplanarity
-bias should be about +0.29% — a coin's face sits ~1 mm above a card's. Measured
-bias was +1.27%. So coplanarity accounts for roughly a fifth of it and something
-else dominates: most likely lens distortion, which no homography can express and
-which grows with distance from the optical centre. The two coins in one frame sat
-at different distances from it and disagreed by 1.7 mm.
+### The bug those photos found
 
-<!-- TODO: reshoot on a hard, matte, uniform surface and see whether the residual
-     drops and the error with it. That's the experiment that would turn the
-     paragraph above from a hypothesis into a result. -->
+The first run on real photographs came back **+2.9% high**, and the outline
+residual was 14–24 px on every frame. Chasing it turned up the largest accuracy
+bug in the repo.
+
+A credit card has rounded corners — ID-1 specifies a 3.18 mm radius. So
+`approxPolyDP` returns four vertices sitting *on the arcs*, inset from where the
+edges would actually meet by 0.293r = **0.93 mm**. The solver was being told
+those four points span 85.60 mm when they really spanned 83.74 mm of card, so
+every millimetre it produced afterwards was 2.2% too big.
+
+What made it findable: **zero of 6,460 outline points fell inside the ideal
+rectangle.** Every one was outside, by a median of 0.929 mm. A uniform one-sided
+offset is what an inset corner looks like — a bent card or a bad lens would
+scatter to both sides. 0.93 mm predicted from the corner radius, 0.929 mm
+measured.
+
+The fix is to ignore the arcs, fit a line along each of the four straight edges,
+and intersect them. The lines are fitted to the **intensity gradient**, not to
+the contour: a contour is wherever the segmentation put it, and this repo's own
+Canny mask is dilated, which pushes the traced outline about 2 px outward. That
+bias was previously hidden by `cornerSubPix` and would otherwise have been
+inherited. Each corner now comes from hundreds of edge points instead of one.
+
+Bias on the hard-table shots went from **+0.780 mm to +0.115 mm**, and the
+outline residual from 14–24 px to under 1 px.
+
+No synthetic scene could have found this. All of mine render sharp-cornered
+rectangles.
 
 ### Measurement accuracy, on synthetic scenes
 
-0.15 mm on known diameters, across obliquity 1.00 to 1.40. That number is about
-the geometry being right — there's no lens in it, no sensor noise, no coin
-thickness and no lighting. Don't quote it as accuracy.
+0.09 mm on known diameters, across obliquity 1.00 to 1.40. That number is about
+the geometry being right — no lens, no sensor noise, no coin thickness, no
+lighting. Don't quote it as accuracy.
 
 ## What it can't do
 
@@ -282,15 +301,10 @@ thickness and no lighting. Don't quote it as accuracy.
 - **The card aspect filter is all that identifies a card.** Anything bright,
   convex, four-sided and roughly 1.586:1 gets measured against. That's how the
   84.42 mm above happened.
-- **`max_reprojection_residual_px` is still a placeholder and is currently too
-  strict for real photographs.** Both my shots landed at 16-18 px against a
-  threshold of 2.0, so the app withholds millimetres on them. On those frames
-  that was the right call. But I can't set the threshold honestly from two
-  photos taken on the worst possible surface, so it stays marked PLACEHOLDER.
-- **No lens distortion model**, and on the real photos this looks like the
-  dominant error. A lens bends straight lines and a homography can't express
-  that, and it gets worse away from the optical centre — two identical coins in
-  one frame, at different distances from the centre, disagreed by 1.7 mm.
+- **No lens distortion model.** A lens bends straight lines and a homography
+  can't express that, and it gets worse away from the optical centre. With the
+  corner bug fixed this is no longer the dominant error, but it's still there
+  and it's why the two coins in a frame don't agree exactly.
 - **The ArUco path doesn't run.** `marker_length_mm` is null in config and the
   code refuses to invent a scale. The card path works.
 - **Thresholds.** Most things in `config.yaml` are still marked PLACEHOLDER.

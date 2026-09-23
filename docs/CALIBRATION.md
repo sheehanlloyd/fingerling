@@ -183,43 +183,66 @@ I stopped there. What's left is sub-pixel boundary convention on a synthetic har
 edge that has no optical blur in it, and tuning against that would be fitting to
 my own renderer. Only a photograph can arbitrate it.
 
-## What a real card does to the outline residual
+## What a real card does, and the bug it exposed
 
-Everything above was measured on rendered scenes. The first two photographs of an
-actual card both came back with an outline residual of 16-18 px against a
-threshold of 2.0, so both were flagged unreliable and had their millimetres
-withheld.
+Everything above was measured on rendered scenes. The first photographs of an
+actual card came back with outline residuals of 14-24 px against a 2.0 px
+threshold, and measurements 2.9% too large.
 
-Two causes, and only one of them was my code.
+My first guess was the surface — the card was on carpet, which is compressible,
+so it might not have been flat. I reshot on a hard table and **the residual did
+not drop**. That's the useful kind of negative result: it ruled out the obvious
+answer in fifteen minutes.
 
-**Rounded corners.** ID-1 specifies a corner radius of 3.18 mm, so a real card is
-four straight edges joined by four arcs. Measured against a sharp-cornered
-rectangle each arc departs by about r(1 - 1/sqrt(2)) ~ 0.93 mm, which is enormous
-next to the sub-pixel deviation this metric is for. Every synthetic scene in
-`tests/` renders sharp corners, so none of them could ever have caught it.
-`_outline_residual_px` now excludes a margin around each corner and measures only
-the straight edges — which is what the check is really about, since a bent card
-or a distorting lens bows the edges.
+The real cause is that a card's corners are rounded. ID-1 specifies a 3.18 mm
+radius, so `approxPolyDP` returns four vertices lying on the arcs rather than at
+the intersection of the edges. Each is inset by r(sqrt(2) - 1) along the diagonal,
+which is 0.293r = 0.93 mm perpendicular to each edge.
 
-**The outline bled into the background, and that one is real.** Excluding the
-corners barely moved the number (RMS 1.106 mm to 1.130 mm), so the corners were
-not the problem. Looking at the traced contour, it follows the card cleanly on
-three sides and wanders out into the carpet on the fourth, picking up bright
-fibres next to a bright card. The median deviation across the whole outline was
-0.956 mm — about 15 px at that scale.
+That is a scale error, not a cosmetic one. Four points spanning 83.74 mm of card
+get told they span 85.60 mm, so everything measured afterwards is 2.2% too big.
 
-I think the residual was doing its job. The card was lying on carpet, which is
-compressible, so it was neither flat nor coplanar with coins pressed into the
-pile beside it. A card that isn't flat is precisely what this metric exists to
-notice. And the measurements from those frames came out about five times worse
-than the synthetic baseline — roughly 1 mm on a 26.5 mm coin against 0.15 mm.
+The diagnostic worth remembering: **zero of 6,460 outline points fell inside the
+ideal rectangle.** All of them outside, median 0.929 mm. A uniform one-sided
+offset is what an inset corner looks like — a bent card or a distorting lens
+would scatter to both sides. The 0.93 mm predicted from the corner radius and the
+0.929 mm measured agreeing to three decimal places is what turned a suspicion
+into a diagnosis.
 
-So the flag and the error agree, on a sample of two. That's encouraging and it
-is not yet a result. `max_reprojection_residual_px` stays a PLACEHOLDER: 2.0
-rejects every real photograph I have, and I am not going to pick a number that
-happens to let my own two shots through. What settles it is a session on a hard,
-matte, uniform surface — if the residual drops and the error drops with it, the
-threshold can be set from the pair.
+### The fix
+
+Ignore the arcs, fit a line along each of the four straight edges, intersect
+consecutive lines. Each corner then comes from hundreds of points rather than one,
+so it's also less noisy than the sub-pixel nudge it replaced.
+
+The lines are fitted to the **intensity gradient**, not to the contour. A contour
+sits wherever the segmentation put it, and `_card_candidates` dilates its Canny
+mask, which pushes the traced outline about 2 px outward. `cornerSubPix` had been
+quietly cancelling that; a contour-based line fit would have inherited it. Each
+contour point is pushed along the edge normal onto the peak of the gradient, with
+a parabolic sub-pixel interpolation, and the line is fitted to those.
+
+The residual is then measured against those same refined points. Measuring a
+gradient-fitted rectangle against a mask-derived contour would just re-measure
+how much the mask was dilated.
+
+### What it bought
+
+| | before | after |
+|---|---|---|
+| bias, hard table | +0.780 mm | **+0.115 mm** |
+| worst error | 0.795 mm | **0.149 mm** |
+| outline residual | 14-24 px | **0.3-1.0 px** |
+
+And the threshold that was a placeholder now has evidence behind it: hard-table
+frames sit at 0.29 and 0.97 px and are accepted, carpet frames at 3.05 and 5.88
+px and are rejected, and the accepted frames measure about three times better.
+So the carpet did matter after all — the corner bug was simply an order of
+magnitude larger and hiding it.
+
+Bow sensitivity, measured on a synthetic scene at the same threshold: 1.0 mm of
+bow gives 1.41 px and passes, 1.5 mm gives 2.16 px and is rejected. The detection
+limit is around 1.2-1.4 mm.
 
 ## Things this gets wrong
 

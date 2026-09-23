@@ -247,15 +247,36 @@ def test_flat_card_outline_residual_is_small():
 def test_bowed_card_produces_a_large_residual_and_is_rejected():
     """A card that isn't flat — or a lens that bends straight lines — still gives
     four corners that solve a homography perfectly well. The corner-only residual
-    cannot see this. The outline residual can, and that's the reason it exists."""
+    cannot see this. The outline residual can, and that's the reason it exists.
+
+    The numbers, measured on this scene at the configured 2.0 px threshold:
+
+        bow 0.00 mm -> 0.88 px, accepted
+        bow 1.00 mm -> 1.77 px, accepted
+        bow 1.50 mm -> 2.34 px, REJECTED
+        bow 3.00 mm -> 4.30 px, REJECTED
+
+    So the detection limit sits somewhere around 1.2 mm of bow. That's the real
+    sensitivity of this check and it's worth writing down rather than asserting
+    some ratio — a card bowed by less than about a millimetre goes through, and
+    its measurements are wrong by however much that costs.
+    """
     q = syn.quad(700, 450, 640, 640 * 53.98 / 85.60)
     flat = calibrate(syn.card_scene(q)[0], card_settings())
     bowed = calibrate(syn.card_scene(q, bow_mm=1.5)[0], card_settings())
 
     assert bowed.calibrated is True, "it still finds a quad — that's the problem"
-    assert bowed.residual_px > 5 * flat.residual_px
+    assert flat.reliable is True
     assert bowed.residual_px > flat.max_residual_px
     assert bowed.reliable is False
+
+    # Monotonic in the bow, so the number means something rather than just
+    # happening to clear a threshold on one scene.
+    series = [
+        calibrate(syn.card_scene(q, bow_mm=b)[0], card_settings()).residual_px
+        for b in (0.0, 0.5, 1.0, 1.5, 2.0)
+    ]
+    assert all(b > a for a, b in zip(series, series[1:])), series
 
 
 # --------------------------------------------------------------------------
