@@ -24,7 +24,18 @@ ultralytics = pytest.importorskip("ultralytics")
 
 
 def find_smoke_weights() -> Path | None:
-    hits = sorted(Path("runs").glob("**/weights/best.pt"))
+    """Weights from a SYNTHETIC smoke run only.
+
+    This used to take the newest best.pt under runs/ of any kind, which broke the
+    moment a real model existed: the tests below feed the detector a synthetic
+    polygon, and a model trained on photographs of trout correctly finds no trout
+    in it. The test then failed while nothing was wrong. Scope it to runs whose
+    name says synthetic so the two never get confused.
+    """
+    hits = [
+        h for h in sorted(Path("runs").glob("**/weights/best.pt"))
+        if "smoke" in str(h) or "synth" in str(h)
+    ]
     return hits[-1] if hits else None
 
 
@@ -189,3 +200,99 @@ def test_a_real_detection_flows_through_the_rest_of_the_pipeline(
     d = decide(m, t, DecideSettings())
     assert d.decision in ("PASS", "CULL", "REVIEW")
     assert d.reasons
+
+
+# ---------------------------------------------------------------------------
+# split leakage
+#
+# The published Roboflow split put augmented copies of the same photograph in
+# train AND test. It inflated pose mAP50-95 to 0.953 on a "held-out" set that
+# wasn't held out. These guard the fix.
+# ---------------------------------------------------------------------------
+
+
+def _fake_export(root: Path, layout: dict[str, list[str]]) -> Path:
+    """Write a Roboflow-shaped dataset. `layout` maps split -> source stems, one
+    file per entry, so a repeated stem is a repeated photograph."""
+    import collections
+
+    seen: collections.Counter = collections.Counter()
+    for split, stems in layout.items():
+        (root / split / "images").mkdir(parents=True, exist_ok=True)
+        (root / split / "labels").mkdir(parents=True, exist_ok=True)
+        for stem in stems:
+            seen[stem] += 1
+            name = f"{stem}_jpg.rf.{seen[stem]:032x}"
+            (root / split / "images" / f"{name}.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+            (root / split / "labels" / f"{name}.txt").write_text(
+                "0 0.5 0.5 0.2 0.2 " + " ".join(["0.5 0.5 2"] * 4) + "\n"
+            )
+    (root / "data.yaml").write_text(
+        "train: ../train/images\nval: ../valid/images\ntest: ../test/images\n"
+        "kpt_shape: [4, 3]\nflip_idx: [0, 1, 2, 3]\nnc: 1\nnames: ['Fish']\n"
+    )
+    return root
+
+
+def test_the_audit_finds_a_photograph_that_spans_two_splits(tmp_path):
+    from eval.dataset import audit_split_leakage
+
+    d = _fake_export(tmp_path / "ds", {
+        "train": ["fish_1", "fish_1", "fish_2"],
+        "valid": ["fish_1", "fish_3"],   # fish_1 leaks
+        "test": ["fish_4"],
+    })
+    a = audit_split_leakage(d)
+    assert a["unique_sources"] == 4
+    assert a["leaked_sources"] == 1
+    assert a["leaked"]["fish_1"] == ["train", "valid"]
+
+
+def test_a_hash_check_would_not_have_caught_this(tmp_path):
+    """Why this needed a filename rule rather than deduplication: the leaked
+    copies are augmented, so their bytes differ. On the real dataset zero of the
+    245 files were byte-identical while 34 photographs still spanned splits."""
+    import hashlib
+
+    d = _fake_export(tmp_path / "ds", {"train": ["fish_1"], "valid": ["fish_1"]})
+    # give the two copies different content, as augmentation does
+    for i, p in enumerate(sorted(d.glob("*/images/*.jpg"))):
+        p.write_bytes(b"\xff\xd8" + bytes([i]) + b"\xff\xd9")
+    digests = {hashlib.md5(p.read_bytes()).hexdigest() for p in d.glob("*/images/*.jpg")}
+    assert len(digests) == 2, "the copies are not byte-identical, so a hash finds nothing"
+
+    from eval.dataset import audit_split_leakage
+
+    assert audit_split_leakage(d)["leaked_sources"] == 1
+
+
+def test_regrouping_puts_every_copy_of_a_photograph_in_one_split(tmp_path):
+    from eval.dataset import audit_split_leakage, regroup_split
+
+    stems = [f"fish_{i}" for i in range(30)]
+    d = _fake_export(tmp_path / "ds", {
+        "train": stems + stems[:10],      # ten photographs have two copies
+        "valid": stems[:10],              # ...and those same ten also sit here
+        "test": stems[10:15],
+    })
+    assert audit_split_leakage(d)["leaked_sources"] > 0
+
+    out = regroup_split(d, tmp_path / "grouped", seed=1)
+    assert audit_split_leakage(out)["leaked_sources"] == 0
+
+    # and nothing was lost on the way
+    before = sum(1 for _ in d.glob("*/images/*.jpg"))
+    after = sum(1 for _ in out.glob("*/images/*.jpg"))
+    assert before == after
+
+
+def test_regrouping_keeps_every_label_with_its_image(tmp_path):
+    from eval.dataset import regroup_split
+
+    d = _fake_export(tmp_path / "ds", {
+        "train": [f"fish_{i}" for i in range(20)], "valid": ["fish_0"], "test": ["fish_1"],
+    })
+    out = regroup_split(d, tmp_path / "grouped", seed=0)
+    for img in out.glob("*/images/*.jpg"):
+        lbl = img.parent.parent / "labels" / (img.stem + ".txt")
+        assert lbl.exists(), f"{img.name} arrived without its label"

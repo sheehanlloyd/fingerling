@@ -1,42 +1,132 @@
 # Checkpoint 1 — dataset survey
 
 What's out there for fish keypoints, what each one would let me compute, and what
-it costs to get. Nothing downloaded. The choice is mine to make and everything
-from checkpoint 3 onward waits on it, because the keypoint schema decides which
-traits are computable at all.
+it costs to get. The survey below is what I wrote before I had an API key. The
+section immediately after this one is what actually happened when I got one, and
+it's mostly a record of the survey being wrong.
 
-## Update — the decision, and what blocked it
+---
 
-**Chosen: fishKeypoints** (universe.roboflow.com/fish-o3fkg/fishkeypoints, CC BY
-4.0, 593 images), over FishPhenoKey.
+# What actually happened
 
-Not because it's the better dataset — it isn't, and the survey below still says
-so. FishPhenoKey is purpose-built for morphometric phenotyping, it's twenty times
-larger, and it's the only schema I could actually read. But access is a signed
-agreement emailed to a maintainer with an unknown turnaround, and that clock
-can't run inside a working session. fishKeypoints is immediately downloadable and
-has a license I can point at. The cost of that choice, stated plainly: a much
-smaller set, and I committed to it without having read its keypoint schema.
+I got a Roboflow key and downloaded the thing I'd chosen. Three findings, in
+descending order of how much they cost me.
 
-**And then it didn't download.** The Roboflow API needs a key. There wasn't one
-in the environment, an unauthenticated request returns HTTP 401
-(`"This method requires your API key."`), and getting one means creating a
-Roboflow account, which was off the table. So the schema is *still* unverified,
-the survey's central caveat still stands, and no model in this repo has ever seen
-a fish.
+## 1. fishKeypoints — the dataset I picked — is unusable for this project
 
-To unblock:
+I chose it blind. That was the gamble I flagged in the survey and it lost.
 
+It's **aerial drone imagery of wild fish schools**. About 12 fish per frame, each
+roughly 20 pixels long, in open water. 5,810 annotations over 496 training
+images, and **two** keypoints per fish: snout and tail. `kpt_shape: [2, 3]`.
+
+It's a biomass-counting dataset. Nothing about it fits a single-station grading
+tool: no anatomical landmarks, no single subject, no controlled surface. Ten of
+my twelve landmarks simply don't exist in it, and neither does any trait beyond
+a length.
+
+Also worth recording: **FISH-KP (NIWA) is gone.** The URL in the survey below
+404s now. Don't trust that row.
+
+## 2. Fish Measurement is the right dataset, and I'd dismissed it
+
+245 images, CC BY 4.0, **one fish per image**, salmonid parr lying in a shallow
+white tray. That's the grading station, photographed. The survey wrote it off in
+three lines because the name "suggested length endpoints" — it has four
+keypoints, and the survey never checked.
+
+`kpt_shape: [4, 3]`, and the export ships **no keypoint names at all**, so I read
+them off the annotations:
+
+![The four keypoints](images/schema_4kp.jpg)
+
+| model index | landmark | in my schema? |
+|---|---|---|
+| 0 | `snout_tip` | yes |
+| 1 | `caudal_fork` | yes — the notch, not the tail tip |
+| 2 | `dorsal_origin` | yes |
+| 3 | `eye_centre` | **added** — the schema had an anterior/posterior pair, this is one point |
+
+I nearly got this wrong. Reading it off the *statistics* — median x-position
+within the bounding box — I concluded kp0 was the tail and kp3 was the caudal
+fork. Rendering three images and looking at them said kp0 is the snout and kp3 is
+the eye. The numbers were consistent with a story that happened to be false.
+
+### What four landmarks costs
+
+| trait | status |
+|---|---|
+| **fork length** | computable. Snout to fork is exactly what's annotated. |
+| condition factor (K) | computable, with a hand-entered weight |
+| total length | no `caudal_tip` |
+| body depth | no `ventral_margin` |
+| depth ratio | needs body depth |
+| peduncle depth | no peduncle points |
+| **spinal curvature** | **no midline. This is the one that hurts.** |
+
+Curvature is the deformity proxy, and deformity is the entire CULL criterion. No
+public fish keypoint dataset I could find annotates a midline, so with the
+trained model the system measures length and does not assess deformity. It says
+so on every record rather than implying a check it never did.
+
+Of the ten plausibility constraints, only three applied to four landmarks. I
+added three more that work on what's actually there, with ranges measured off the
+ground truth rather than guessed:
+
+| measured from 245 annotations | range | configured as |
+|---|---|---|
+| eye position, as a fraction of fork length | 0.042 – 0.162 | 0.02 – 0.25 |
+| dorsal origin, as a fraction of fork length | 0.404 – 0.546 | 0.30 – 0.65 |
+
+The dorsal origin one is remarkably tight — every one of the 245 fish falls in a
+0.14-wide band.
+
+## 3. Two things wrong with the dataset itself
+
+**A mislabelled annotation.** The eye is anterior to the dorsal origin in 244 of
+245 fish. The exception has snout and fork swapped, so the "snout" is on the tail
+and the eye computes to 0.938 of body length:
+
+![The mislabelled annotation](images/bad_label.jpg)
+
+A hard plausibility constraint caught it — in the training data, before any model
+existed. That's the constraint layer doing exactly the job it was built for,
+against ground truth rather than a prediction.
+
+**The published train/valid/test split leaks.** This one matters more.
+
+Roboflow exports one file per augmented copy, named `<source>_jpg.rf.<hash>.jpg`.
+245 files, but only **120 source photographs** behind them. The published split
+was made over the files, not the photographs, so **34 sources have augmented
+copies in more than one split** — rotated and re-exposed versions of the same
+fish sitting in train and test simultaneously.
+
+The files aren't byte-identical, so a hash check finds nothing and it all looks
+clean. I only caught it because the same filename stem showed up twice while I
+was chasing something else.
+
+Trained on the published split, the model scored pose mAP50-95 **0.953** on
+"held-out" test data that was nothing of the kind. `eval/dataset.py` now has
+`audit_split_leakage()` and `regroup_split()`, which re-splits by source
+photograph — 84 / 22 / 14 sources, zero leakage — and the numbers in the README
+come from a retrain on that.
+
+One thing I want to be careful about: the clean retrain scores **0.991**, which
+is *higher*, and that is not a demonstration that leakage was hurting anything.
+The mislabelled fish above sat in the old test split and regrouping moved it into
+training, and on a test set this small that single label is worth 4.2 points of
+pose mAP50-95 all by itself (0.9534 with it, 0.9950 without). The two test sets
+aren't comparable and neither is big enough to support three decimal places.
+
+Fixing the leak didn't move the score in a direction I can demonstrate. It made
+the score mean something, which is a different and better claim.
+
+```bash
+python -m eval.dataset --fetch data/fish-measurement --workspace fish-count --project fish-measurement-z2ois
+python -c "from eval.dataset import regroup_split; regroup_split('data/fish-measurement','data/fish-measurement-grouped')"
 ```
-export ROBOFLOW_API_KEY=...
-python -m eval.dataset --fetch data/fishkeypoints
-python -m eval.dataset --describe data/fishkeypoints
-```
 
-The second command prints the keypoint count, names and flip_idx the export
-actually declares. Read it before touching measurement code. The section at the
-bottom of this file — "The working schema" — is what has to be checked against
-it.
+---
 
 ## First, a caveat about what I could and couldn't verify
 
@@ -163,64 +253,16 @@ independently, and meanwhile spend a Roboflow API key on reading all three schem
 before committing. That doesn't need a decision from you today beyond "yes, get
 the key."
 
-## The working schema, and the trait list re-derived against it
+## The working schema (superseded)
 
-Since the real annotations never arrived, `pipeline/landmarks.py` defines a
-schema and everything downstream was built against it. Twelve points:
+This section used to describe twelve invented landmarks, because the dataset
+hadn't arrived and something had to be built against. It has: see
+"What actually happened" at the top of this file for the four the real dataset
+annotates.
 
-| # | name | what it is | in FishPhenoKey? |
-|---|---|---|---|
-| 0 | `snout_tip` | most anterior point of the closed mouth | yes |
-| 1 | `eye_anterior` | anterior margin of the eye | yes |
-| 2 | `eye_posterior` | posterior margin of the eye | yes |
-| 3 | `operculum_posterior` | posterior edge of the gill cover | yes |
-| 4 | `dorsal_origin` | anterior insertion of the dorsal fin | yes |
-| 5 | `dorsal_insertion` | posterior insertion of the dorsal fin | yes |
-| 6 | `dorsal_apex` | outermost point of the dorsal fin margin | yes |
-| 7 | `ventral_margin` | lowest point of the ventral outline | yes |
-| 8 | `peduncle_dorsal` | top of the caudal peduncle | yes |
-| 9 | `peduncle_ventral` | bottom of the caudal peduncle | yes |
-| 10 | `caudal_fork` | the notch between the tail lobes | **no** |
-| 11 | `caudal_tip` | most posterior point of the tail fin | yes |
-
-Eleven of twelve are a subset of FishPhenoKey's 22, so if the real data follows
-that schema the mapping is a rename table. The twelfth is the problem, and it's
-the same problem the survey below already flagged: **nothing annotates the fork.**
-
-### What that means trait by trait
-
-- **Fork length** — computable only if `caudal_fork` exists. If the real schema
-  doesn't have it, this goes null with the reason attached; it does NOT silently
-  become total length. That's enforced by `TRAIT_REQUIREMENTS` in
-  `pipeline/landmarks.py` and there's a test for it
-  (`test_a_missing_landmark_nulls_only_the_traits_that_need_it`).
-- **Total length** — snout to tail tip. Always available, added as a fallback and
-  reported alongside. Not in CLAUDE.md's trait list.
-- **Standard length** — *not implemented.* It needs the hypural plate
-  ("posterior end of caudal vertebrae" in FishPhenoKey), which isn't in this
-  schema. If the real dataset has it, that's arguably the better primary length
-  trait since it doesn't move when a tail frays, and switching is a config-level
-  decision plus one entry in `TRAIT_REQUIREMENTS`.
-- **Body depth, depth ratio, peduncle depth** — map cleanly, no gaps.
-- **Spinal curvature** — still the weak one, exactly as the survey predicted. The
-  midline is four derived points: snout, the midpoint of dorsal origin and
-  ventral margin, the midpoint of the two peduncle points, and the fork. Four
-  points fit a line and measure deviation, but **a fish bent between two of them
-  does not show up at all.** It's a coarse deformity proxy. It is called that
-  everywhere it appears.
-- **Condition factor** — unchanged: only with a hand-entered weight, never
-  estimated.
-- **Plausibility constraints** — well served. Snout, both eye corners and the
-  operculum give the eye-ordering check; both dorsal fin insertions give the
-  dorsal ordering check; both peduncle points give the not-swapped check. Ten
-  constraints in total, eight of them hard. This part of the schema is doing
-  what it was picked to do.
-
-### The honest summary
-
-Every trait in CLAUDE.md's list is implemented except standard length, which was
-never in that list. What's uncertain isn't the trait maths — that's tested
-against fixtures where I know the answer — it's whether these twelve names
-correspond to anything a real annotator drew. That question is one API key away
-from being answered.
-
+The twelve names still exist in `pipeline/landmarks.py` as the vocabulary, and
+that turned out to be the right call — the four real points are a subset of it,
+everything else is absent, and `TRAIT_REQUIREMENTS` nulls the affected traits
+with a stated reason instead of substituting a neighbour. Swapping the schema was
+a rename table and one added name (`eye_centre`), exactly as intended. That's the
+one prediction in this file that held up.

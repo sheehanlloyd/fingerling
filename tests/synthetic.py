@@ -157,3 +157,33 @@ def blank_scene() -> np.ndarray:
     frame = rng.integers(60, 90, size=(CANVAS_H, CANVAS_W, 3), dtype=np.uint8)
     cv2.circle(frame, (700, 450), 180, (150, 150, 150), -1)
     return frame
+
+
+def card_and_coins_scene(
+    image_quad_px: np.ndarray,
+    coins_mm: list[tuple[float, float, float]],
+    coin_grey: int | list[int] = 150,
+) -> np.ndarray:
+    """A calibration card plus coins of exactly known diameter, all coplanar.
+
+    `coins_mm` is [(centre_x_mm, centre_y_mm, diameter_mm), ...] in board-plane
+    coordinates, where the origin is the card's top-left corner. The coins are
+    projected through the SAME ground-truth homography the card was rendered
+    with, so by construction they lie on the calibration plane and are exactly
+    the diameter stated.
+
+    That last part is what makes this a maths test rather than a measurement:
+    there is no coin thickness here, no lens, no sensor. If eval/validate_mm
+    can't recover these diameters to a hair, the geometry is wrong — and a
+    photograph would never tell me that, because a photograph has no ground
+    truth in it.
+    """
+    frame, H = card_scene(image_quad_px)
+    theta = np.linspace(0, 2 * np.pi, 240, endpoint=False)
+    greys = coin_grey if isinstance(coin_grey, list) else [coin_grey] * len(coins_mm)
+    for (cx_mm, cy_mm, dia_mm), g in zip(coins_mm, greys):
+        r = dia_mm / 2.0
+        ring_mm = np.stack([cx_mm + r * np.cos(theta), cy_mm + r * np.sin(theta)], axis=1)
+        ring_px = project(H, ring_mm)
+        cv2.fillPoly(frame, [np.round(ring_px).astype(np.int32)], (int(g),) * 3)
+    return frame

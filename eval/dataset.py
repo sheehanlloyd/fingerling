@@ -39,8 +39,11 @@ import yaml
 from pipeline.detect import CANONICAL_FISH
 from pipeline.landmarks import SCHEMA
 
-ROBOFLOW_WORKSPACE = "fish-o3fkg"
-ROBOFLOW_PROJECT = "fishkeypoints"
+# Fish Measurement, by Fish Count. One salmonid parr per frame in a tray, four
+# keypoints, CC BY 4.0. NOT fishKeypoints, which was the checkpoint 1 pick and
+# turned out to be aerial drone footage of wild schools — see docs/DATASETS.md.
+ROBOFLOW_WORKSPACE = "fish-count"
+ROBOFLOW_PROJECT = "fish-measurement-z2ois"
 
 
 # ---------------------------------------------------------------------------
@@ -55,14 +58,16 @@ def fetch_roboflow(
     project: str = ROBOFLOW_PROJECT,
     version: int | None = None,
     fmt: str = "yolov8",
+    export_timeout_s: float = 600.0,
 ) -> Path:
-    """Download the fishKeypoints export. Needs ROBOFLOW_API_KEY in the env.
+    """Download a Roboflow YOLO-pose export. Needs ROBOFLOW_API_KEY in the env.
 
     Deliberately uses urllib and the documented REST endpoints rather than the
     `roboflow` pip package: it's two requests, and it avoids a dependency whose
     only job would be to make those two requests.
     """
     import json
+    import time
     import urllib.request
     import zipfile
 
@@ -71,7 +76,7 @@ def fetch_roboflow(
         raise RuntimeError(
             "no ROBOFLOW_API_KEY in the environment. Set it and re-run:\n"
             "  export ROBOFLOW_API_KEY=...\n"
-            "  python -m eval.dataset --fetch data/fishkeypoints\n"
+            "  python -m eval.dataset --fetch data/fish-measurement\n"
             "Getting a key needs a Roboflow account, which I can't create."
         )
 
@@ -85,18 +90,46 @@ def fetch_roboflow(
 
     versions = meta.get("versions") or []
     if version is None:
-        if not versions:
-            raise RuntimeError("the project metadata lists no versions to export")
-        version = versions[-1].get("id", "").split("/")[-1] or 1
+        # Roboflow returns versions newest-first. The original code took
+        # versions[-1], which is the OLDEST — v1, 55 images, and no generated
+        # export at all, which is why this failed with {'progress': 0} the first
+        # time it was ever run for real. Pick the newest version that has
+        # finished generating, and say which one out loud.
+        ready = [
+            v for v in versions
+            if not v.get("generating", False) and v.get("progress", 0) >= 1
+        ]
+        if not ready:
+            raise RuntimeError("the project metadata lists no finished versions to export")
+        newest = max(ready, key=lambda v: v.get("created", 0))
+        version = str(newest.get("id", "")).split("/")[-1] or "1"
+        print(
+            f"selected version {version} "
+            f"({newest.get('images')} images, generated {newest.get('name')})"
+        )
 
+    # An export has to be built server-side before there's a link. The endpoint
+    # returns {"progress": <float>} while it's still working, so poll rather than
+    # treating the first miss as a failure.
     export_url = (
         f"https://api.roboflow.com/{workspace}/{project}/{version}/{fmt}?api_key={key}"
     )
-    with urllib.request.urlopen(export_url, timeout=120) as r:
-        export = json.loads(r.read())
-    link = export.get("export", {}).get("link")
+    link = None
+    deadline = time.monotonic() + export_timeout_s
+    while time.monotonic() < deadline:
+        with urllib.request.urlopen(export_url, timeout=120) as r:
+            export = json.loads(r.read())
+        link = export.get("export", {}).get("link")
+        if link:
+            break
+        pct = float(export.get("progress", 0.0)) * 100
+        print(f"  roboflow is generating the {fmt} export... {pct:.0f}%")
+        time.sleep(5.0)
     if not link:
-        raise RuntimeError(f"no download link in the export response: {export}")
+        raise RuntimeError(
+            f"export for {workspace}/{project} v{version} did not become available "
+            f"within {export_timeout_s:.0f}s. Last response: {export}"
+        )
 
     zip_path = out / "export.zip"
     urllib.request.urlretrieve(link, zip_path)
@@ -131,6 +164,112 @@ def describe_schema(dataset_dir: str | Path) -> dict[str, Any]:
         "classes": doc.get("names"),
         "raw": doc,
     }
+
+
+# ---------------------------------------------------------------------------
+# re-splitting, because the published split leaks
+# ---------------------------------------------------------------------------
+
+
+def source_stem(path: str | Path) -> str:
+    """The original photograph a Roboflow file came from.
+
+    Roboflow names exports `<source>_jpg.rf.<hash>.jpg`, one file per augmented
+    copy. Everything before `_jpg.rf.` identifies the photograph the copy was
+    made from.
+    """
+    return Path(path).name.split("_jpg.rf.")[0]
+
+
+def audit_split_leakage(dataset_dir: str | Path) -> dict[str, Any]:
+    """Count source photographs that appear in more than one split.
+
+    Worth running on any Roboflow export before believing a validation number.
+    On Fish Measurement v9 this returns 34 leaked sources out of 120: the
+    published split was made over the 245 augmented FILES, not over the 120
+    photographs behind them, so rotated and re-exposed copies of the same fish
+    sit in train and test at once. The files aren't byte-identical, so a hash
+    check finds nothing and everything looks fine.
+
+    The consequence is not subtle. Trained on the published split this model
+    scored pose mAP50-95 0.953 on "held-out" test data that was nothing of the
+    kind.
+    """
+    d = Path(dataset_dir)
+    splits: dict[str, set[str]] = {}
+    for sp in ("train", "valid", "test"):
+        for img in (d / sp / "images").glob("*.jpg"):
+            splits.setdefault(source_stem(img), set()).add(sp)
+    leaked = {k: sorted(v) for k, v in splits.items() if len(v) > 1}
+    return {
+        "unique_sources": len(splits),
+        "leaked_sources": len(leaked),
+        "leaked": leaked,
+    }
+
+
+def regroup_split(
+    dataset_dir: str | Path,
+    out_dir: str | Path,
+    fractions: tuple[float, float, float] = (0.70, 0.18, 0.12),
+    seed: int = 0,
+) -> Path:
+    """Re-split a Roboflow export by SOURCE PHOTOGRAPH instead of by file.
+
+    Every augmented copy of one photograph lands in the same split, so a
+    validation score means what it's supposed to mean. This is a group split,
+    the standard fix; the only fiddly part is that the grouping key has to be
+    recovered from the filename because the export doesn't record it.
+
+    The split sizes come out approximate, because sources carry between one and
+    four copies each and the groups are assigned whole.
+    """
+    import shutil
+
+    src = Path(dataset_dir)
+    out = Path(out_dir)
+    if out.exists():
+        shutil.rmtree(out)
+
+    by_source: dict[str, list[tuple[Path, Path]]] = {}
+    for sp in ("train", "valid", "test"):
+        for img in sorted((src / sp / "images").glob("*.jpg")):
+            lbl = src / sp / "labels" / (img.stem + ".txt")
+            if lbl.exists():
+                by_source.setdefault(source_stem(img), []).append((img, lbl))
+
+    sources = sorted(by_source)
+    random.Random(seed).shuffle(sources)
+    n = len(sources)
+    n_train = int(round(fractions[0] * n))
+    n_valid = int(round(fractions[1] * n))
+    groups = {
+        "train": sources[:n_train],
+        "valid": sources[n_train:n_train + n_valid],
+        "test": sources[n_train + n_valid:],
+    }
+
+    for sp, names in groups.items():
+        (out / sp / "images").mkdir(parents=True, exist_ok=True)
+        (out / sp / "labels").mkdir(parents=True, exist_ok=True)
+        for name in names:
+            for img, lbl in by_source[name]:
+                shutil.copy2(img, out / sp / "images" / img.name)
+                shutil.copy2(lbl, out / sp / "labels" / lbl.name)
+
+    doc = yaml.safe_load((src / "data.yaml").read_text())
+    doc.update({"train": "../train/images", "val": "../valid/images", "test": "../test/images"})
+    doc["regrouped"] = {
+        "note": "re-split by source photograph; the published split leaked across splits",
+        "seed": seed,
+        "sources": {sp: len(v) for sp, v in groups.items()},
+    }
+    (out / "data.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
+
+    for sp, names in groups.items():
+        files = sum(len(by_source[x]) for x in names)
+        print(f"  {sp:<6} {len(names):>4} sources  {files:>4} files")
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -228,21 +367,47 @@ def main(argv: list[str] | None = None) -> int:
 
     ap = argparse.ArgumentParser(prog="python -m eval.dataset")
     g = ap.add_mutually_exclusive_group(required=True)
-    g.add_argument("--fetch", metavar="OUT_DIR", help="pull fishKeypoints from Roboflow")
+    g.add_argument("--fetch", metavar="OUT_DIR", help="pull the dataset from Roboflow")
     g.add_argument("--synthetic", metavar="OUT_DIR", help="write the synthetic stand-in")
     g.add_argument("--describe", metavar="DATASET_DIR", help="print a dataset's keypoint schema")
+    g.add_argument("--regroup", metavar="DATASET_DIR",
+                   help="re-split a downloaded dataset by SOURCE PHOTOGRAPH. The published "
+                        "Roboflow split is over augmented files, so copies of one photo land "
+                        "in train and test at once — see docs/DATASETS.md")
+    ap.add_argument("--workspace", default=ROBOFLOW_WORKSPACE,
+                    help=f"Roboflow workspace (default: {ROBOFLOW_WORKSPACE})")
+    ap.add_argument("--project", default=ROBOFLOW_PROJECT,
+                    help=f"Roboflow project (default: {ROBOFLOW_PROJECT})")
+    ap.add_argument("--version", type=int, default=None,
+                    help="dataset version; default is the newest that has finished generating")
+    ap.add_argument("--out", metavar="OUT_DIR", help="destination for --regroup")
     ap.add_argument("--train-n", type=int, default=120)
     ap.add_argument("--val-n", type=int, default=30)
     args = ap.parse_args(argv)
 
     if args.fetch:
         try:
-            fetch_roboflow(args.fetch)
+            fetch_roboflow(
+                args.fetch,
+                workspace=args.workspace,
+                project=args.project,
+                version=args.version,
+            )
         except RuntimeError as exc:
             print(str(exc))
             return 1
     elif args.synthetic:
         make_synthetic(args.synthetic, args.train_n, args.val_n)
+    elif args.regroup:
+        audit = audit_split_leakage(args.regroup)
+        print(
+            f"{audit['unique_sources']} source photographs, "
+            f"{audit['leaked_sources']} of them appear in more than one split"
+        )
+        out = args.out or (str(args.regroup).rstrip("/") + "-grouped")
+        regroup_split(args.regroup, out)
+        after = audit_split_leakage(out)
+        print(f"after regrouping: {after['leaked_sources']} leaked (must be 0) -> {out}")
     else:
         import json
 

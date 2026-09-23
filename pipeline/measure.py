@@ -206,7 +206,7 @@ def _to_mm(q_px: Quantity, calib: Calibration, s: MeasureSettings) -> Quantity |
     homography) is what actually gets used for the traits. This helper only backs
     the uncertainty conversion.
     """
-    if not calib.calibrated or calib.mm_per_px is None:
+    if not calib.reliable or calib.mm_per_px is None:
         return None
     return Quantity(q_px.value * calib.mm_per_px, q_px.sigma * calib.mm_per_px, "mm")
 
@@ -216,8 +216,18 @@ def _distance_mm(
 ) -> Quantity | None:
     """Exact millimetre distance: map both endpoints through the homography, then
     attach the landmark term (converted through the local scale) and the
-    calibration scale term in quadrature."""
-    if not calib.calibrated:
+    calibration scale term in quadrature.
+
+    Gated on `reliable`, not on `calibrated`, and the difference is the whole
+    point. A frame can yield a homography and still be worthless. A real test
+    frame with no card in it found something card-shaped at obliquity 4.57 with a
+    21 px outline residual, and this function returned 84.42 mm for it. The row
+    was correctly tagged unreliable and the millimetre figure was written to the
+    database anyway, where the next person to read that column has no reason to
+    doubt it. A number nobody should use must not exist, not merely travel with a
+    flag that something else has to remember to check.
+    """
+    if not calib.reliable:
         return None
     d_mm = calib.distance_mm(lm.point(a), lm.point(b))
     px = _distance_px(lm, a, b, s)
@@ -310,7 +320,25 @@ def measure_traits(
     weight_g: float | None = None,
 ) -> MeasurementSet:
     """All traits for one detection. Never raises on missing landmarks."""
-    out = MeasurementSet(calibrated=bool(calib.calibrated), weight_g=weight_g)
+    out = MeasurementSet(calibrated=bool(calib.reliable), weight_g=weight_g)
+
+    # Why millimetres are missing, if they are. "No target in frame" and "target
+    # found but the view is too oblique to believe" are different problems with
+    # different fixes, and a single message for both wastes the distinction.
+    if calib.reliable:
+        no_mm = None
+    elif not calib.calibrated:
+        no_mm = f"frame is not calibrated ({calib.reason or 'no target found'})"
+    else:
+        bits = []
+        if calib.obliquity is not None and calib.obliquity > calib.max_obliquity:
+            bits.append(f"obliquity {calib.obliquity:.2f} > {calib.max_obliquity}")
+        if calib.residual_meaningful and calib.residual_px is not None \
+                and calib.residual_px > calib.max_residual_px:
+            bits.append(f"residual {calib.residual_px:.2f}px > {calib.max_residual_px}")
+        no_mm = "frame is not calibrated well enough: " + (
+            "; ".join(bits) or "calibration flagged unreliable"
+        )
 
     if not lm.detected:
         out.unavailable = {t: "no detection" for t in TRAIT_REQUIREMENTS}
@@ -331,12 +359,12 @@ def measure_traits(
         out.fork_length_px = fork_px
         out.fork_length_mm = _distance_mm(lm, "snout_tip", "caudal_fork", calib, settings)
         if out.fork_length_mm is None:
-            out.unavailable["fork_length_mm"] = "frame is not calibrated"
+            out.unavailable["fork_length_mm"] = no_mm
 
     if check("total_length_mm"):
         out.total_length_mm = _distance_mm(lm, "snout_tip", "caudal_tip", calib, settings)
         if out.total_length_mm is None:
-            out.unavailable["total_length_mm"] = "frame is not calibrated"
+            out.unavailable["total_length_mm"] = no_mm
 
     if check("body_depth_mm"):
         depth_px = _distance_px(lm, "dorsal_origin", "ventral_margin", settings)
@@ -345,7 +373,7 @@ def measure_traits(
             lm, "dorsal_origin", "ventral_margin", calib, settings
         )
         if out.body_depth_mm is None:
-            out.unavailable["body_depth_mm"] = "frame is not calibrated"
+            out.unavailable["body_depth_mm"] = no_mm
 
     if check("peduncle_depth_mm"):
         ped_px = _distance_px(lm, "peduncle_dorsal", "peduncle_ventral", settings)
@@ -354,7 +382,7 @@ def measure_traits(
             lm, "peduncle_dorsal", "peduncle_ventral", calib, settings
         )
         if out.peduncle_depth_mm is None:
-            out.unavailable["peduncle_depth_mm"] = "frame is not calibrated"
+            out.unavailable["peduncle_depth_mm"] = no_mm
 
     # Ratio is taken in pixels on purpose — see _ratio. No calibration needed.
     if check("depth_ratio") and depth_px is not None and fork_px is not None:

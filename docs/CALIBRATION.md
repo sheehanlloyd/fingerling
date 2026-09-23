@@ -125,6 +125,102 @@ The ArUco span is a 5x extrapolation from a 40 mm marker; the card span is about
 corner error, which is the argument for putting the target near the fish and not
 in the corner of the frame.
 
+## What the obliquity threshold should actually be
+
+`max_obliquity` was 2.0 and that number had nothing behind it. `eval/validate_mm`
+can now settle it: render a card plus three coins of exactly known diameter on
+one plane, tilt the plane, and measure the coins through the calibration.
+
+![Measurement error against obliquity](images/obliquity_vs_error.png)
+
+The result is not what I expected. **Tilt does not degrade the measurement.** Max
+error stays under 0.15 mm from obliquity 1.00 all the way to 1.40, with no trend
+— which, on reflection, is the whole point of solving a homography. A homography
+undoes perspective exactly. A pixels-per-millimetre constant could not, and
+there's a test (`test_a_naive_pixels_per_mm_would_fail_the_tilted_case`) that
+checks a naive scale factor really would fail the same scene, so the tilted test
+isn't passing for a trivial reason.
+
+What fails is **detection**, and it fails abruptly:
+
+| obliquity | what happens |
+|---|---|
+| 1.00 – 1.40 | all three coins found, max error ≤ 0.15 mm |
+| ~1.46 | a coin stops being round enough to pass the circularity filter |
+| ~1.62 | no coins found |
+| > 1.71 | the card itself isn't found |
+
+So I set `max_obliquity: 1.4`. That is **not** a measured failure point — it's the
+edge of the evidence. Past it I can't measure anything because nothing is
+detected, so I don't know whether the geometry holds and I'm not going to imply I
+do. 2.0 was worse than a guess; it was a guess that looked like a specification.
+
+One thing this sweep can't see: it's a synthetic scene with rasterised hard
+edges, no lens and no coin thickness. A real lens adds distortion that a
+homography genuinely cannot express, and that gets worse toward the frame edges
+and with tilt. So the real threshold is probably tighter than 1.4, not looser.
+
+## What the synthetic sweep found in my own code
+
+Worth recording because it's the reason the sweep existed. The first run measured
+every coin **0.41 mm small** — the same absolute amount regardless of coin
+diameter. A constant offset is a boundary problem; a constant percentage would
+have been a scale problem. That told me where to look without any guessing.
+
+The cause was mine: `_binarise` blurs before Otsu, the blur turns a hard edge
+into a ramp several pixels wide, and Otsu's single global threshold isn't the
+ramp's midpoint. On that scene it landed at 123 where the midpoint was about 93,
+so every boundary cut inside its object.
+
+Deleting the blur drops the error to 0.04 mm and is the wrong fix — the blur is
+there so sensor noise doesn't shatter contours in a real photograph, and the size
+of the bias depends on where Otsu lands, which depends on lighting. It's not a
+constant anyone can subtract. Refining each boundary point onto the half-maximum
+intensity of its own edge makes the result independent of the threshold, which is
+the property that survives a change of lighting. Residual bias: **+0.14 mm**.
+
+I stopped there. What's left is sub-pixel boundary convention on a synthetic hard
+edge that has no optical blur in it, and tuning against that would be fitting to
+my own renderer. Only a photograph can arbitrate it.
+
+## What a real card does to the outline residual
+
+Everything above was measured on rendered scenes. The first two photographs of an
+actual card both came back with an outline residual of 16-18 px against a
+threshold of 2.0, so both were flagged unreliable and had their millimetres
+withheld.
+
+Two causes, and only one of them was my code.
+
+**Rounded corners.** ID-1 specifies a corner radius of 3.18 mm, so a real card is
+four straight edges joined by four arcs. Measured against a sharp-cornered
+rectangle each arc departs by about r(1 - 1/sqrt(2)) ~ 0.93 mm, which is enormous
+next to the sub-pixel deviation this metric is for. Every synthetic scene in
+`tests/` renders sharp corners, so none of them could ever have caught it.
+`_outline_residual_px` now excludes a margin around each corner and measures only
+the straight edges — which is what the check is really about, since a bent card
+or a distorting lens bows the edges.
+
+**The outline bled into the background, and that one is real.** Excluding the
+corners barely moved the number (RMS 1.106 mm to 1.130 mm), so the corners were
+not the problem. Looking at the traced contour, it follows the card cleanly on
+three sides and wanders out into the carpet on the fourth, picking up bright
+fibres next to a bright card. The median deviation across the whole outline was
+0.956 mm — about 15 px at that scale.
+
+I think the residual was doing its job. The card was lying on carpet, which is
+compressible, so it was neither flat nor coplanar with coins pressed into the
+pile beside it. A card that isn't flat is precisely what this metric exists to
+notice. And the measurements from those frames came out about five times worse
+than the synthetic baseline — roughly 1 mm on a 26.5 mm coin against 0.15 mm.
+
+So the flag and the error agree, on a sample of two. That's encouraging and it
+is not yet a result. `max_reprojection_residual_px` stays a PLACEHOLDER: 2.0
+rejects every real photograph I have, and I am not going to pick a number that
+happens to let my own two shots through. What settles it is a session on a hard,
+matte, uniform surface — if the residual drops and the error drops with it, the
+threshold can be set from the pair.
+
 ## Things this gets wrong
 
 **The fish is not on the board plane.** The whole method assumes target and

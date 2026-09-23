@@ -44,10 +44,19 @@ calibration:
   # pipeline/calibrate.py for why a single ArUco marker can't produce one.
   max_reprojection_residual_px: 2.0
 
-  # PLACEHOLDER. How far from square-on the target may be before the frame is
-  # rejected. 1.0 is perfectly flat-on (in-plane rotation still scores 1.0);
-  # bigger means more tilt. This is the gate that actually catches a bad view.
-  max_obliquity: 2.0
+  # MEASURED, and lowered from the old placeholder of 2.0. 1.0 is perfectly
+  # flat-on (in-plane rotation still scores 1.0); bigger means more tilt.
+  #
+  # eval/validate_mm swept a synthetic scene from obliquity 1.00 to 1.71.
+  # Measurement accuracy does NOT degrade with tilt — max error stayed under
+  # 0.15 mm across that whole range, because a homography undoes perspective
+  # properly. What fails is DETECTION: past about 1.43 a foreshortened coin
+  # stops being round enough to find, and past 1.71 the card itself isn't found.
+  #
+  # So 1.4 is not a measured failure point, it's the edge of the evidence. Past
+  # it I have no data either way, and 2.0 never had any. docs/CALIBRATION.md has
+  # the sweep and docs/images/obliquity_vs_error.png plots it.
+  max_obliquity: 1.4
 
 trust:
   # PLACEHOLDER. Weights blending mean landmark confidence with the geometric
@@ -62,6 +71,19 @@ decide:
   # Units: max midline deviation from the snout-fork axis, divided by fork length.
   curvature_cull_above: 0.06
 
+  # Whether the running detector can measure spinal curvature at all.
+  #
+  # True with the stub, which places twelve landmarks including the dorsal,
+  # ventral and peduncle points a midline needs. MUST BE SET FALSE when running
+  # the trained model: it emits four landmarks (snout, caudal fork, dorsal
+  # origin, eye) because that is all the public dataset annotates, so curvature
+  # is None on every fish. Leave this true with that model and 100% of the stock
+  # lands in the review queue — measured, not guessed: 25 of 25 on the first run.
+  #
+  # Setting it false does not disable culling silently. Every decision made
+  # under it carries a "DEFORMITY NOT ASSESSED" reason on the record.
+  assess_deformity: true
+
 plausibility:
   # PLACEHOLDER ranges. Sanity bounds on dimensionless body proportions — these
   # catch confident-but-anatomically-nonsense predictions. Numbers are eyeballed
@@ -72,6 +94,19 @@ plausibility:
   peduncle_to_depth_ratio_max: 0.85
   # Minimum separation, in pixels, before two landmarks count as degenerate.
   min_landmark_separation_px: 2.0
+
+  # MEASURED, not placeholders. These four came off the 245 ground-truth
+  # annotations in the Fish Measurement dataset and were then widened so real
+  # biological variation isn't punished. Distributions are in docs/DATASETS.md.
+  #   eye:    ground truth spans 0.042-0.162 of fork length  -> allow 0.02-0.25
+  #   dorsal: ground truth spans 0.404-0.546 of fork length  -> allow 0.30-0.65
+  # Both are axial positions measured back from the snout along the snout->fork
+  # axis, divided by fork length, so they're scale-free and survive calibration
+  # error.
+  eye_axial_min: 0.02
+  eye_axial_max: 0.25
+  dorsal_axial_min: 0.30
+  dorsal_axial_max: 0.65
 
 measure:
   # PLACEHOLDER, all three. These turn a model confidence into a positional
@@ -93,14 +128,19 @@ detector:
   # ultralytics isn't installed, the code falls back to the stub, says so on
   # stdout, and tags every record with the backend that really ran.
   backend: stub
-  weights: null
+  weights: runs/pose/fishmeasure_4kp/weights/best.pt
   conf_threshold: 0.25
   device: mps
 
-  # If the real model's keypoint order differs from pipeline/landmarks.py's
-  # SCHEMA, list its names here in ITS order and detect_yolo.py will remap.
-  # Null means the model already emits SCHEMA order.
-  keypoint_order: null
+  # The real model's keypoint order, in ITS order; detect_yolo.py builds the
+  # permutation onto SCHEMA. The Fish Measurement export ships no keypoint names
+  # at all — only `kpt_shape: [4, 3]` — so these four were read off the rendered
+  # annotations, not off a schema file. docs/DATASETS.md has the pictures.
+  keypoint_order:
+    - snout_tip      # model kp 0
+    - caudal_fork    # model kp 1
+    - dorsal_origin  # model kp 2
+    - eye_centre     # model kp 3
 
   # Stub settings below. Only read when backend is `stub`.
   # One of: normal | low_confidence | implausible | deformed | no_detection

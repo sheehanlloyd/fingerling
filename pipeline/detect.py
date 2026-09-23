@@ -35,6 +35,7 @@ CANONICAL_FISH: dict[str, tuple[float, float]] = {
     "snout_tip": (0.000, 0.000),
     "eye_anterior": (0.075, -0.030),
     "eye_posterior": (0.115, -0.030),
+    "eye_centre": (0.095, -0.030),
     "operculum_posterior": (0.215, 0.000),
     "dorsal_origin": (0.400, -0.125),
     "dorsal_insertion": (0.560, -0.105),

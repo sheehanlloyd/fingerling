@@ -1,24 +1,34 @@
 """The landmark schema, and the contract every detector returns.
 
-CLAUDE.md says the public dataset decides the schema. It didn't get to — the
-Roboflow download is blocked on an API key I don't have (see docs/DECISIONS.md),
-so nobody has read fishKeypoints' actual keypoint names. Rather than invent a
-schema and bury the invention in index arithmetic, everything downstream refers
-to landmarks *by name*, and the mapping from name to array index lives in one
-table here.
+CLAUDE.md says the public dataset decides the schema. It finally got to. The
+dataset is Fish Measurement (Roboflow, CC BY 4.0, 245 images of salmonid parr in
+a tray) and it annotates FOUR points per fish, not twelve:
 
-That has a practical consequence I care about: when the real annotations show up,
-adapting is editing `SCHEMA` and writing a rename table, not rewriting measure.py.
-And if the real dataset is missing a point, the traits that need it return None
-instead of a plausible-looking number. `TRAIT_REQUIREMENTS` below is what makes
-that automatic.
+    model index 0 -> snout_tip
+    model index 1 -> caudal_fork
+    model index 2 -> dorsal_origin
+    model index 3 -> eye_centre
 
-The twelve points here are a deliberate subset of FishPhenoKey's 22 (the one
-schema I could actually verify, from the paper) plus one that FishPhenoKey does
-NOT have: `caudal_fork`. FishPhenoKey annotates the tail tip and the hypural
-plate but not the notch between the tail lobes. So if fishKeypoints turns out to
-follow FishPhenoKey, fork length is not computable and the code will say so
-rather than quietly reporting total length under a fork-length label.
+I read that off the images, not off a schema file — the export ships no keypoint
+names at all, only `kpt_shape: [4, 3]`. docs/DATASETS.md has the renders.
+
+The names below are still the full vocabulary, deliberately. The four real points
+are a subset of it, everything else is simply absent, and the machinery that was
+built for a missing landmark does the rest: `TRAIT_REQUIREMENTS` nulls the traits
+that need a point nobody annotated, and each trust constraint reports itself "not
+applicable" rather than passing by default. That's the whole reason nothing
+downstream refers to a landmark by index.
+
+What it costs is written down plainly rather than hidden: with the real model,
+fork length is computable and body depth, depth ratio, peduncle depth, total
+length and the spinal curvature index are not. Curvature is the one that hurts,
+because it's the deformity proxy and therefore the entire CULL criterion. No
+public fish keypoint dataset I could find annotates a midline.
+
+`eye_centre` is new and exists because the dataset marks one eye point, not the
+anterior/posterior pair the rest of this schema assumed. Naming it for what it
+actually is beats forcing it into `eye_anterior` and quietly moving the eye
+forward by half an eye-width.
 """
 
 from __future__ import annotations
@@ -34,6 +44,7 @@ SCHEMA: tuple[str, ...] = (
     "snout_tip",
     "eye_anterior",
     "eye_posterior",
+    "eye_centre",
     "operculum_posterior",
     "dorsal_origin",
     "dorsal_insertion",
@@ -54,6 +65,7 @@ DESCRIPTIONS: dict[str, str] = {
     "snout_tip": "most anterior point of the closed mouth",
     "eye_anterior": "anterior margin of the eye",
     "eye_posterior": "posterior margin of the eye",
+    "eye_centre": "centre of the eye — the single eye point the real dataset annotates",
     "operculum_posterior": "posterior edge of the gill cover",
     "dorsal_origin": "anterior insertion of the dorsal fin at the body",
     "dorsal_insertion": "posterior insertion of the dorsal fin at the body",

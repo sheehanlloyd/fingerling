@@ -1,6 +1,6 @@
 """Phase 2 training: fine-tune a YOLO-pose model on this laptop.
 
-    python -m eval.train --data data/fishkeypoints/data.yaml --epochs 100
+    python -m eval.train --data data/fish-measurement-grouped/data.yaml --epochs 100
 
 Everything about this is shaped by the machine (M4 Pro, 24 GB, MPS) and by the
 dataset being small (fishKeypoints is 593 images).

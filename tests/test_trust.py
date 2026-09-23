@@ -235,6 +235,8 @@ def test_a_bent_but_untrusted_fish_reviews_rather_than_culls():
 
 
 def test_a_trusted_fish_with_no_curvature_reviews_rather_than_passes():
+    """Default behaviour: this detector is supposed to measure curvature, so a
+    fish that didn't produce one is a fish a human should look at."""
     lm = F.place(
         confidence=0.95,
         drop=("dorsal_origin", "ventral_margin", "peduncle_dorsal", "peduncle_ventral"),
@@ -242,6 +244,50 @@ def test_a_trusted_fish_with_no_curvature_reviews_rather_than_passes():
     m, t, d = run(lm)
     assert m.curvature_index is None
     assert d.decision == REVIEW
+
+
+def test_a_detector_that_cannot_measure_curvature_does_not_review_every_fish():
+    """The four-point trained model has no midline landmarks, so curvature is
+    None on every fish. Under the default rule that put 25 of 25 real fish in the
+    review queue at a median trust of 0.96 — a queue holding all the stock.
+
+    With assess_deformity false the same fish passes on trust alone.
+    """
+    lm = F.place(
+        confidence=0.95,
+        drop=("dorsal_origin", "ventral_margin", "peduncle_dorsal", "peduncle_ventral"),
+    )
+    settings = DecideSettings(assess_deformity=False)
+    m, t, _ = run(lm)
+    d = decide(m, t, settings)
+    assert m.curvature_index is None
+    assert d.decision == PASS
+
+
+def test_not_assessing_deformity_is_stated_on_every_record_it_affects():
+    """The switch must not be a silent way to turn culling off. A PASS produced
+    without a curvature measurement has to say so, or someone reads it as
+    'checked for deformity and fine' — which is exactly the confidently-wrong
+    output this whole project exists to avoid."""
+    lm = F.place(
+        confidence=0.95,
+        drop=("dorsal_origin", "ventral_margin", "peduncle_dorsal", "peduncle_ventral"),
+    )
+    m, t, _ = run(lm)
+    d = decide(m, t, DecideSettings(assess_deformity=False))
+    assert d.decision == PASS
+    assert any("DEFORMITY NOT ASSESSED" in r for r in d.reasons)
+
+
+def test_the_switch_does_not_rescue_an_untrusted_fish():
+    """assess_deformity relaxes the curvature rule and nothing else. A fish whose
+    landmarks aren't believable still goes to a human."""
+    lm = F.place(
+        confidence=0.05,
+        drop=("dorsal_origin", "ventral_margin", "peduncle_dorsal", "peduncle_ventral"),
+    )
+    m, t, _ = run(lm)
+    assert decide(m, t, DecideSettings(assess_deformity=False)).decision == REVIEW
 
 
 # ---------------------------------------------------------------------------

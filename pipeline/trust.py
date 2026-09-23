@@ -66,6 +66,13 @@ class TrustSettings:
     peduncle_to_depth_ratio_min: float = 0.20
     peduncle_to_depth_ratio_max: float = 0.85
     min_landmark_separation_px: float = 2.0
+    # Measured off the 245 ground-truth annotations in Fish Measurement, then
+    # widened. These are NOT placeholders — see docs/DATASETS.md for the
+    # distributions they came from.
+    eye_axial_min: float = 0.02
+    eye_axial_max: float = 0.25
+    dorsal_axial_min: float = 0.30
+    dorsal_axial_max: float = 0.65
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> "TrustSettings":
@@ -80,6 +87,10 @@ class TrustSettings:
             peduncle_to_depth_ratio_min=float(p.get("peduncle_to_depth_ratio_min", 0.20)),
             peduncle_to_depth_ratio_max=float(p.get("peduncle_to_depth_ratio_max", 0.85)),
             min_landmark_separation_px=float(p.get("min_landmark_separation_px", 2.0)),
+            eye_axial_min=float(p.get("eye_axial_min", 0.02)),
+            eye_axial_max=float(p.get("eye_axial_max", 0.25)),
+            dorsal_axial_min=float(p.get("dorsal_axial_min", 0.30)),
+            dorsal_axial_max=float(p.get("dorsal_axial_max", 0.65)),
         )
 
 
@@ -342,6 +353,63 @@ def c_peduncle_to_depth_in_range(lm, f, m, s) -> ConstraintResult:
     )
 
 
+# --- constraints that work on the four points the real dataset actually gives ---
+#
+# The originals above were written against a twelve-point schema that no public
+# dataset turned out to annotate. On the real model only three of them apply, so
+# plausibility had almost nothing to say. These three are checkable with
+# snout_tip, caudal_fork, dorsal_origin and eye_centre, which is all the trained
+# model emits. Their ranges were measured off the dataset's own ground truth
+# rather than guessed — that work is in docs/DATASETS.md.
+
+
+def c_eye_anterior_to_dorsal_origin(lm, f, m, s) -> ConstraintResult:
+    """The eye sits in the head; the dorsal fin does not. If the eye computes as
+    posterior to the dorsal origin, the body axis is reversed — which is exactly
+    the failure a snout/tail swap produces.
+
+    This fires on 1 of the dataset's own 245 annotations, and that annotation is
+    genuinely mislabelled. See docs/DATASETS.md.
+    """
+    name, kind = "eye_anterior_to_dorsal_origin", "hard"
+    if not lm.has("eye_centre", "dorsal_origin"):
+        return _na(name, kind, "eye_centre or dorsal_origin missing")
+    a_eye = f.axial_of(lm.point("eye_centre")) / f.length_px
+    a_dor = f.axial_of(lm.point("dorsal_origin")) / f.length_px
+    return _verdict(
+        name, kind, a_eye < a_dor,
+        f"eye at {a_eye:.3f} of fork length, dorsal origin at {a_dor:.3f}",
+    )
+
+
+def c_eye_in_head_region(lm, f, m, s) -> ConstraintResult:
+    """Ground truth puts the eye between 0.042 and 0.162 of fork length back from
+    the snout. Outside a widened version of that, the point is somewhere a real
+    eye isn't. Soft: an unusual head shape shouldn't veto a detection outright."""
+    name, kind = "eye_in_head_region", "soft"
+    if not lm.has("eye_centre"):
+        return _na(name, kind, "eye_centre missing")
+    a = f.axial_of(lm.point("eye_centre")) / f.length_px
+    return _verdict(
+        name, kind, s.eye_axial_min <= a <= s.eye_axial_max,
+        f"eye at {a:.3f} of fork length (allowed {s.eye_axial_min}-{s.eye_axial_max})",
+    )
+
+
+def c_dorsal_origin_in_mid_body(lm, f, m, s) -> ConstraintResult:
+    """The tightest thing in the ground truth: every one of the 245 fish has its
+    dorsal origin between 0.404 and 0.546 of fork length. Widened to 0.30-0.65
+    here so real biological variation isn't punished."""
+    name, kind = "dorsal_origin_in_mid_body", "soft"
+    if not lm.has("dorsal_origin"):
+        return _na(name, kind, "dorsal_origin missing")
+    a = f.axial_of(lm.point("dorsal_origin")) / f.length_px
+    return _verdict(
+        name, kind, s.dorsal_axial_min <= a <= s.dorsal_axial_max,
+        f"dorsal origin at {a:.3f} of fork length (allowed {s.dorsal_axial_min}-{s.dorsal_axial_max})",
+    )
+
+
 CONSTRAINTS: tuple[Callable[..., ConstraintResult], ...] = (
     c_eye_between_snout_and_operculum,
     c_dorsal_insertion_posterior_to_origin,
@@ -353,6 +421,9 @@ CONSTRAINTS: tuple[Callable[..., ConstraintResult], ...] = (
     c_body_not_collinear,
     c_depth_ratio_in_range,
     c_peduncle_to_depth_in_range,
+    c_eye_anterior_to_dorsal_origin,
+    c_eye_in_head_region,
+    c_dorsal_origin_in_mid_body,
 )
 
 

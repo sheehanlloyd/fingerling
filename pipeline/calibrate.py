@@ -53,6 +53,9 @@ import numpy as np
 # ISO/IEC 7810 ID-1. Not a measurement — the standard itself.
 CARD_ID1_WIDTH_MM = 85.60
 CARD_ID1_HEIGHT_MM = 53.98
+# ID-1 also specifies the corner radius, and it matters: the outline residual has
+# to ignore the arcs or every real card fails the check. See _outline_residual_px.
+CARD_CORNER_RADIUS_MM = 3.18
 
 
 class CalibrationUnavailable(RuntimeError):
@@ -250,7 +253,10 @@ def _point_to_rect_distance_mm(pts_mm: np.ndarray, rect_mm: np.ndarray) -> np.nd
 
 
 def _outline_residual_px(
-    contour_px: np.ndarray, H: np.ndarray, rect_mm: np.ndarray
+    contour_px: np.ndarray,
+    H: np.ndarray,
+    rect_mm: np.ndarray,
+    corner_exclusion_mm: float = CARD_CORNER_RADIUS_MM * 1.6,
 ) -> float:
     """RMS distance, in pixels, from the detected outline to the ideal rectangle.
 
@@ -258,9 +264,33 @@ def _outline_residual_px(
     outline point into the board plane, measure how far it lands from the true
     rectangle's edges, and divide by the local scale to get back to pixels so the
     threshold means something in image terms.
+
+    CORNERS ARE EXCLUDED, and they have to be. ID-1 specifies a corner radius of
+    3.18 mm, so a real card's outline is four straight edges joined by four arcs.
+    Measured against a sharp-cornered rectangle each arc departs from it by about
+    r(1 - 1/sqrt(2)) ~ 0.93 mm, which is enormous next to the sub-pixel deviation
+    this metric exists to detect.
+
+    I only found this when I photographed an actual card: residual 17.5 px on a
+    frame that was otherwise fine, which flagged a perfectly good calibration as
+    unreliable and withheld every millimetre. My synthetic scenes all render
+    sharp-cornered rectangles, so none of them could ever have caught it.
+
+    Excluding a margin of 1.6x the corner radius leaves the straight edges, which
+    is what the check is actually about — a bent card or a distorting lens bows
+    the EDGES, and that's still measured.
     """
     pts_px = np.asarray(contour_px, dtype=np.float64).reshape(-1, 2)
     pts_mm = cv2.perspectiveTransform(pts_px.reshape(-1, 1, 2), H).reshape(-1, 2)
+
+    corner_dist = np.min(
+        np.linalg.norm(pts_mm[:, None, :] - rect_mm[None, :, :], axis=2), axis=1
+    )
+    keep = corner_dist > corner_exclusion_mm
+    if keep.sum() < 16:
+        return float("inf")  # nothing left but corners; the outline is not a card
+    pts_px, pts_mm = pts_px[keep], pts_mm[keep]
+
     dist_mm = _point_to_rect_distance_mm(pts_mm, rect_mm)
 
     scales = np.empty(len(pts_px))

@@ -14,3 +14,6 @@ frames/
 
 # generated source dump for review, not part of the project
 fingerling_review_bundle.txt
+
+# API keys. Never commit.
+.env

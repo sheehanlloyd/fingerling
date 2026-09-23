@@ -3,280 +3,299 @@
 A single-station fish grading app. Camera or video in, real-world measurements
 and a sort decision out.
 
-A fingerling is a juvenile fish, roughly finger-sized — the life stage where fish
-farms do quality inspection before deciding which fish move forward in a breeding
-program.
+Fish farms still grade by hand — net a fish, measure it with calipers, eyeball it
+for deformities, write it down. About five minutes a fish, so farms only ever
+measure a tiny sample of their stock, and you can't run a breeding program on a
+sample that small.
 
-## Why
+The interesting engineering here isn't finding a fish in an image. That's solved.
+It's everything between a model output and a decision someone will act on:
+predictions come out in pixels and breeding decisions need millimetres with a
+known error; a wrong measurement delivered confidently is worse than no
+measurement; and the data the model trained on is never the data it sees.
 
-Fish farms still grade and phenotype by hand. Someone nets a fish, measures it
-with calipers, eyeballs it for deformities, writes it down. Five minutes a fish.
-So farms only ever measure a tiny sample of their stock, and you can't run a
-serious breeding program off a sample that small.
+![The trained model on held-out test images](docs/images/real_model_predictions.jpg)
 
-The interesting engineering here isn't "can a neural net find a fish" — that's
-basically solved. It's everything between a model output and a decision someone
-will act on:
+Four landmarks per fish — snout, eye, dorsal origin, caudal fork — on trout parr
+the model has never seen. All three PASS. All three say "uncalibrated", because
+there's no calibration target in frame and the app won't print millimetres it
+can't defend.
 
-- predictions come out in pixels, breeding decisions need millimetres with a
-  known error
-- a wrong measurement delivered confidently is worse than no measurement, so the
-  system has to know when to shut up and ask a human
-- every pipeline stage costs time, and if this ever feeds a sorting machine the
-  time budget is fixed by belt speed
-- the data the model was trained on is not the data it will see
+## Running it
 
-So the weight of this project is on the system around the model, not on squeezing
-out accuracy points.
-
-## The honest status, up front
-
-**There is no trained model.** The plan was to fine-tune a YOLO-pose model on the
-fishKeypoints dataset from Roboflow Universe. That needs an API key, there wasn't
-one, and getting one means making an account. So the detector you get is a stub:
-a parametric fish drawn from made-up proportions that doesn't look at the image
-at all.
-
-Everything else is real and tested — calibration, measurement, uncertainty, the
-trust layer, routing, storage, timing, the API, the UI, and the training harness
-itself. But **nothing in this repo has ever seen a fish**, and every record it
-writes says which detector produced it so you can't mistake one for the other.
-
-The training harness isn't theoretical, though. Rather than ship an unexecuted
-training script, I generated a dataset of geometric fish-shaped polygons and ran
-the whole thing: 25 epochs of yolo11n-pose on MPS with `amp=False`, 188 seconds,
-and then pushed the resulting model through the real pipeline end to end. So the
-dataset writer, the training flags, the MPS path, the weights loading, the
-keypoint parsing and the stub/real swap are all verified. **The model that came
-out has learned to find a polygon and its metrics say nothing whatsoever about
-fish** — see [docs/SESSION_SUMMARY.md](docs/SESSION_SUMMARY.md).
-
-To unblock the real thing, see [docs/DATASETS.md](docs/DATASETS.md).
-
-## Demo, from a fresh clone
+Python 3.11+. Everything runs locally on a MacBook Pro M4 Pro, no cloud, no APIs.
 
 ```bash
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-```
-
-If you only want to run the app and not train anything, the last three lines of
-`requirements.txt` (torch, torchvision, ultralytics) are optional — everything
-except `tests/test_train.py` works without them, and that file skips itself.
-
-Make something to point at, since there's no dataset in the repo:
-
-```bash
 python -m cli.make_sample
+python -m api.server
 ```
 
-That renders 60 frames with a credit-card-shaped calibration target moving
-around. **There is no fish in those frames.** The stub doesn't look at the image,
-so this exercises real calibration geometry against an imaginary animal.
+Then open http://127.0.0.1:8000. That's the whole demo: live view with the
+landmark overlay, the current fish's numbers, a records table, a review queue you
+can correct from, and an export button.
 
-Grade it to a CSV:
+The sample clip contains a calibration card and **no fish** — the stub detector
+doesn't look at the image, so that run exercises real calibration geometry
+against a fake animal. It exists so a fresh clone has something to point at.
+
+Batch mode, no UI:
 
 ```bash
 python -m cli.batch data/sample --out results.csv
 ```
 
-Or run the web app and watch it:
+To see the routing, edit `detector.stub_mode` in `config.yaml`: `normal`,
+`deformed` (routes to CULL), `implausible` (REVIEW, with the failed constraints
+named), `low_confidence`, `no_detection`.
+
+### Running the real model
+
+The weights live under `runs/`, which is gitignored, so you have to train first:
 
 ```bash
-python -m api.server
+export ROBOFLOW_API_KEY=...
+python -m eval.dataset --fetch data/fish-measurement --workspace fish-count --project fish-measurement-z2ois
+python -m eval.dataset --regroup data/fish-measurement          # fixes a leak, see below
+python -m eval.train --data "$PWD/data/fish-measurement-grouped/data.yaml" --epochs 100
 ```
 
-Then open http://127.0.0.1:8000. Live view with the landmark overlay, the current
-fish's numbers, the records table, the review queue, and an export button.
+About 13 minutes on MPS. Then three lines in `config.yaml`:
 
-To see the parts that matter, edit `detector.stub_mode` in `config.yaml`:
-
-- `normal` — everything passes
-- `deformed` — bent midline, routes to CULL
-- `implausible` — high confidence, impossible anatomy, routes to REVIEW with the
-  specific failed constraints listed. This is the case a confidence threshold
-  cannot catch and it's the reason the trust layer exists.
-- `low_confidence` — clean geometry, unsure model, routes to REVIEW by a
-  different path
-- `no_detection` — nothing in frame
-
-## How it works
-
-```
-capture -> detect -> calibrate -> measure -> trust -> decide -> record
+```yaml
+detector:
+  backend: yolo
+  weights: runs/pose/fishmeasure_grouped/weights/best.pt
+decide:
+  assess_deformity: false    # this model has no midline landmarks — see below
 ```
 
-Every stage is timed separately and the breakdown is stored per fish.
+## What's real and what isn't
 
-### Calibration is the part I care most about
+| | |
+|---|---|
+| Calibration (card → homography → mm) | real, tested against synthetic scenes with known answers |
+| Landmark detection | **real** — yolo11n-pose fine-tuned on 176 images of trout parr |
+| Measurement, uncertainty, trust, routing | real |
+| Millimetre accuracy on a photograph | **measured: ~1 mm on a 26.5 mm object.** See below. |
+| Deformity / CULL | **not supported by the trained model.** See below. |
 
-An object whose physical size I know exactly sits in the frame. Find its corners,
-solve a homography to its plane, and any point on that plane converts to
-millimetres. Two targets: an ArUco marker on a phone screen (no printer scaling
-error), or a credit card — ISO/IEC 7810 ID-1 is 85.60 × 53.98 mm worldwide, so I
-know its size to a hundredth of a millimetre without owning a caliper.
+## What I found
 
-The thing worth reading is [docs/CALIBRATION.md](docs/CALIBRATION.md), because
-the obvious quality metric doesn't work. A homography has 8 degrees of freedom
-and four corners give exactly 8 equations, so the reprojection residual is ~0 no
-matter how badly the target is angled. My near-edge-on test scene reports 0.000
-px and it's a terrible view. What actually catches a bad view is *obliquity*,
-read off the homography's local Jacobian: 1.0 flat-on, unchanged by in-plane
-rotation, climbing with tilt.
+The genuinely useful part of this project turned out to be the things that went
+wrong. Full detail in [docs/DATASETS.md](docs/DATASETS.md) and
+[docs/DECISIONS.md](docs/DECISIONS.md).
 
-If there's no target in frame, the record is marked uncalibrated and no
-millimetre figure is reported at all. Ratios still are.
+### The dataset I'd chosen was the wrong dataset
 
-### Measurements carry error bars
+I picked fishKeypoints in checkpoint 1 without reading its keypoint schema,
+because it was the only thing I could download without signing an agreement, and
+I wrote down at the time that this was a gamble. It lost. fishKeypoints is
+**aerial drone footage of wild fish schools** — twelve fish per frame, each about
+20 pixels long, two keypoints each. It's a biomass-counting dataset.
 
-Fork length, total length, body depth, depth ratio, peduncle depth, spinal
-curvature index, and condition factor (only with a hand-entered weight — never
-estimated). Each with an uncertainty.
+I switched to Fish Measurement: 245 images, one salmonid parr per frame in a
+white tray, four keypoints. My own survey had dismissed it in three lines without
+checking.
 
-The uncertainty model is spelled out in full at the top of
-`pipeline/measure.py`. Short version: first-order propagation of independent
-Gaussian landmark errors, plus a *relative* calibration scale term. Two
-consequences worth knowing:
+Nothing downstream had to be rewritten, because nothing downstream refers to a
+landmark by index. Changing schema was a rename table plus one added name.
 
-- Landmark errors are assumed independent, which is the assumption most likely to
-  be wrong — a model that misses the whole fish by 5 px moves every landmark
-  together and that cancels in a distance. So for correlated error this
-  **over-estimates**. I'd rather be wrong in that direction.
-- Scale error cancels in a ratio, so `depth_ratio` and `curvature_index` carry no
-  calibration term at all. That's the whole argument for preferring ratios, and
-  it's why the deformity trait is the dimensionless one.
+### I nearly read the schema wrong
 
-### Trust is two independent signals
+The export ships no keypoint names at all, only `kpt_shape: [4, 3]`. Inferring
+them from summary statistics gave me a clean, confident, wrong answer — I had the
+tail as the snout. Rendering three images and looking at them fixed it.
 
-Model confidence, and geometric plausibility that doesn't involve the model at
-all — an eye can't be behind the gill cover, a tail can't be in front of the
-dorsal fin, two landmarks can't sit on the same pixel. Ten named constraints,
-eight of them hard (impossibilities) and two soft (range checks on proportions).
-Which ones fired is stored, not just the score.
+![The four keypoints](docs/images/schema_4kp.jpg)
 
-I built the scoring the way the spec described it first and it doesn't work: a
-50/50 arithmetic blend lets a fish with its caudal peduncle upside down score
-0.80 and pass. So a hard failure zeroes plausibility outright, and the two
-signals combine as a weighted **geometric** mean, because they're two necessary
-conditions rather than two opinions to average. Both changes are in
-[docs/DECISIONS.md](docs/DECISIONS.md) for review.
+### The published train/test split leaks
 
-### Routing
+245 files, but only **120 source photographs**. Roboflow writes one file per
+augmented copy, and the published split was made over files rather than
+photographs, so **34 photographs have copies in both train and test**. The copies
+aren't byte-identical, so a hash check finds nothing.
 
-Trust below threshold → REVIEW. Trusted and curvature above threshold → CULL.
-Otherwise PASS.
+Trained on that split the model scored pose mAP50-95 of **0.953** on "held-out"
+data that wasn't held out. `eval/dataset.py` now has `audit_split_leakage()` and
+`regroup_split()`, and every number below comes from a retrain on a clean
+group split.
 
-Trust is checked *first*, deliberately. A curvature reading off landmarks you
-don't believe is evidence of a bad detection, not of a deformed fish, and culling
-on it destroys healthy stock because the model had a bad frame.
+### My own plausibility constraints found a mislabelled image
 
-Both thresholds are placeholders in `config.yaml`. Phase 3 picks them off a real
-coverage curve.
+In the ground truth, not in a prediction. 244 of 245 fish have the eye anterior
+to the dorsal fin. The exception has snout and fork swapped.
 
-### The review queue is the point
+![The mislabelled annotation](docs/images/bad_label.jpg)
 
-Corrections write `human_corrected` and the human's verdict *without* overwriting
-the machine's. The pair of the two is the training data for the next model —
-overwrite the original and that signal is gone forever.
+### A millimetre figure was being written from a calibration known to be bad
 
-## What's measured, and what isn't
+A test frame with no card in it found something card-shaped at obliquity 4.57 and
+a 21 px residual. The row was correctly tagged `calibration_reliable: 0` — and
+`fork_length_mm: 84.42` went into the database anyway. The flag was right and
+nothing read it.
 
-Numbers below came out of this machine. Everything else in this README is
-description, not measurement.
+That's the precise failure this whole project exists to prevent, and it sat in
+the code the whole time. Millimetres are now gated on `reliable`, not on
+`calibrated`. A number nobody should use shouldn't exist, rather than travelling
+next to a flag something else has to remember to check.
 
-**Per-stage latency**, 200 frames of the synthetic sample clip at 1280 px long
-edge, M4 Pro:
+### Tilt doesn't hurt accuracy — it hurts detection
 
-| stage | n | p50 | p95 | mean |
-|---|---|---|---|---|
-| detect (stub) | 200 | 0.10 | 0.11 | 0.10 |
-| calibrate | 200 | 9.90 | 10.61 | 9.96 |
-| measure | 200 | 0.17 | 0.21 | 0.17 |
-| trust | 200 | 0.15 | 0.17 | 0.15 |
-| decide | 200 | 0.00 | 0.00 | 0.00 |
-| **total** | 200 | **10.33** | **11.06** | **10.39** |
+`max_obliquity` was 2.0 and nothing was behind that number. Sweeping a synthetic
+scene from 1.00 to 1.71:
 
-Calibration is 96% of it, and it's the card path — Canny plus Otsu plus contour
-finding over a 1280 px frame, twice. Nobody has tried to make that faster because
-nothing has needed it to be yet.
+![Measurement error against obliquity](docs/images/obliquity_vs_error.png)
 
-For comparison, the same table with the real (polygon-trained) YOLO-pose model
-substituted for the stub, over the 36 synthetic validation images at 640 px and
-no calibration target in frame:
+Error stays under 0.15 mm the whole way, because a homography undoes perspective
+properly. What breaks is detection: past ~1.43 a foreshortened coin stops being
+round enough to find, and past 1.71 the card isn't found. So it's set to 1.4 —
+not a measured failure point, just where the evidence stops.
 
-| stage | n | p50 | p95 | mean |
-|---|---|---|---|---|
-| detect (yolo11n-pose, MPS) | 36 | 9.67 | 13.36 | 32.24 |
-| calibrate (no target found) | 36 | 0.59 | 0.82 | 0.73 |
-| measure | 36 | 0.09 | 0.14 | 0.10 |
-| trust | 36 | 0.15 | 0.19 | 0.15 |
-| **total** | 36 | **10.50** | **14.23** | **33.24** |
+## Numbers
 
-The mean being three times the p50 on `detect` is the first-frame warmup — the
-first inference on MPS pays for graph setup. That's exactly the kind of thing a
-p50/p95 breakdown is for and a single average would have hidden.
+### Model, on a leak-free group split
 
-Read that with two caveats. `detect` is the stub, which does no work — a real
-model will dominate this table completely and probably reorder it. And
-`calibrate` is finding a card on a clean synthetic background, which is the easy
-case.
+`yolo11n-pose`, 100 epochs, 640 px, MPS, `amp=False`, `fliplr=0.0`. 735 seconds
+on an M4 Pro. Trained on 176 images from 84 source photographs; tested on 27
+images from 14 photographs the model never saw in any form.
 
-**Calibration accuracy on synthetic scenes** is in
-[docs/CALIBRATION.md](docs/CALIBRATION.md) — a 200 mm span measured back to
-within about 0.3 mm through a rendered homography. That's a check that the maths
-is right, not an accuracy claim about a camera.
+| | box | pose |
+|---|---|---|
+| precision | 0.998 | 0.998 |
+| recall | 1.000 | 1.000 |
+| mAP50 | 0.995 | 0.995 |
+| mAP50-95 | 0.899 | **0.991** |
 
-**Measurement accuracy in millimetres against real objects: not measured.** That's
-Phase 3 — calibrate on one object of known size, measure the others, report the
-error distribution.
+Inference is 7.9 ms per image.
 
-**Model accuracy against fish: not measured, because there is no fish model.**
-The smoke-test run reported pose mAP50 0.995 and mAP50-95 0.515 on its own
-validation split — of synthetic polygons it was trained to find. (Two runs at the
-same seed gave 0.521 and 0.515: several MPS ops have no deterministic
-implementation, so training here is not bit-reproducible.) That is a
-statement about whether the training loop works, not about fish, and it must
-never be quoted as anything else.
-<!-- TODO: my call — replace this whole paragraph once the Roboflow key exists
-and eval/train.py has run against real fish. -->
+**Don't read much into that 0.991.** The test set is 14 photographs. I can show
+you exactly how fragile a number that size is: on the original 25-image test
+split, deleting the single mislabelled image moved pose mAP50-95 from **0.9534 to
+0.9950** — 4.2 points, from one bad ground-truth label.
 
-## What breaks
+Which also means the obvious comparison doesn't work. The leaky split scored
+0.953 and the clean split scored 0.991, and that is *not* evidence that fixing
+the leak helped — if anything it's the wrong direction. The mislabelled fish sat
+in the **old test split**, and the regrouping happened to put it in the **new
+training split**, so most of that gap is one bad label moving between buckets.
 
-Stated plainly, because most of these aren't fixable by trying harder.
+What I can say is narrower and still worth saying: 0.953 was measured on data the
+model had partly seen, so it was never a valid held-out number whatever its
+value. Fixing the leak didn't make the score better or worse in any way I can
+demonstrate at this sample size. It made the number mean something.
 
-- **The fish is not on the calibration plane.** The whole method assumes the
-  target and the fish are coplanar. They aren't — a fish has thickness and its
-  midline sits above the board by roughly half its body depth, so it images
-  larger and every length reads long. Roughly `d / (d - h)` for camera distance
-  `d` and midline height `h`: about 4% at a 500 mm working distance with a 20 mm
-  half-depth, which on a 200 mm fish is 8 mm. **It's systematic, averaging frames
-  won't help, and it is larger than every other error in this project put
-  together.** I haven't measured my working distance, so there's no correction
-  applied and no number claimed. <!-- TODO: my call -->
-- **Two overlapping fish.** The detector takes the highest-confidence detection
-  and ignores the rest. Nothing here tracks a fish across frames either — each
-  frame is an independent grading event, so a video of one fish produces one row
-  per frame, not one row per fish. Use `--stride` to thin that out.
-- **The curvature index is coarse.** The midline is four derived points, so a
-  fish bent *between* two of them doesn't register at all. It's a deformity
-  proxy, not a spine measurement.
-- **The card aspect filter is the only thing identifying a card.** Anything
-  bright, convex, four-sided and roughly 1.586:1 gets measured against. A
-  paperback at the right angle would do it.
-- **No lens distortion model.** No intrinsics, no undistortion. A wide-angle lens
-  bends straight lines and a homography can't express that. On the card path the
-  outline residual will at least notice; on the ArUco path nothing will.
-- **The ArUco path is unusable right now** — `marker_length_mm` is null in config
-  and the code refuses to invent a scale. The card path works.
-- **The landmark schema is invented.** No public dataset got to decide it, so the
-  twelve landmark names may not correspond to anything a real annotator drew.
-  Everything downstream refers to landmarks by name and declares which ones each
-  trait needs, so a schema swap is a rename table and a missing point nulls the
-  affected traits rather than substituting a neighbour — but it's still an
-  assumption sitting under everything.
-- **Every threshold in `config.yaml` marked PLACEHOLDER is a guess**, including
-  the confidence-to-pixels mapping that sets the width of every error bar
-  printed. Don't quote them at anyone.
+The honest caveat on all of it: one tray, one camera, one lighting setup, one
+species, 120 photographs. It says nothing about a different hatchery. Training
+data this homogeneous is a known way to ship something that works in the lab and
+falls over on site, and this dataset is about as homogeneous as they come.
+
+### Latency, 25 real frames at 640 px on MPS
+
+| stage | p50 | p95 |
+|---|---|---|
+| detect | 9.72 | 17.48 |
+| calibrate | 1.60 | 2.51 |
+| measure | 0.03 | 0.04 |
+| trust | 0.08 | 0.13 |
+| **total** | **11.46** | **21.47** |
+
+Milliseconds. Mean detect is 39.34 against a p50 of 9.72 because the first MPS
+inference pays for graph setup — exactly the thing a single average would hide.
+
+Calibration is much slower on the 1280 px sample clip (10.5 ms p50) than on these
+640 px frames, because it's searching a bigger image.
+
+### Measurement accuracy, on real photographs
+
+Two phone photos, one ID-1 card as the calibration target, two Canadian loonies
+(26.50 mm each) as the objects. Four measurements.
+
+| | |
+|---|---|
+| bias (signed mean) | **+0.336 mm** (+1.27%) |
+| MAE | 0.756 mm |
+| RMS | 0.813 mm |
+| p95 absolute | 1.022 mm |
+| worst | 1.046 mm |
+
+```bash
+python -m eval.validate_mm shots/ --objects loonie,loonie --working-distance-mm 350
+```
+
+So roughly **±1 mm on a 26.5 mm object**, about 4%. On synthetic scenes the same
+code recovers known diameters to 0.15 mm, so essentially all of that error is
+things a rendered scene doesn't have. That gap is the entire reason for taking
+the photos.
+
+Two things worth saying about it.
+
+**The system called it.** Both frames were flagged
+`calibration_reliable: 0` — outline residual 17.9 px and 16.1 px against a
+threshold of 2.0 — and both then produced errors about five times worse than the
+synthetic baseline. The quality signal was right. In the pipeline proper those
+frames would have had their millimetres withheld entirely, which is the correct
+outcome. Two frames isn't proof that the residual predicts error, but it's the
+first evidence either way.
+
+**I know why the shots were bad, and it's the surface.** They were taken on
+carpet. A card on a compressible pile isn't flat and isn't coplanar with coins
+that sink into it differently, which is exactly the assumption everything here
+rests on. The residual is the metric that notices a card that isn't flat, and it
+noticed.
+
+I can also rule out one suspect. At a 350 mm working distance the coplanarity
+bias should be about +0.29% — a coin's face sits ~1 mm above a card's. Measured
+bias was +1.27%. So coplanarity accounts for roughly a fifth of it and something
+else dominates: most likely lens distortion, which no homography can express and
+which grows with distance from the optical centre. The two coins in one frame sat
+at different distances from it and disagreed by 1.7 mm.
+
+<!-- TODO: reshoot on a hard, matte, uniform surface and see whether the residual
+     drops and the error with it. That's the experiment that would turn the
+     paragraph above from a hypothesis into a result. -->
+
+### Measurement accuracy, on synthetic scenes
+
+0.15 mm on known diameters, across obliquity 1.00 to 1.40. That number is about
+the geometry being right — there's no lens in it, no sensor noise, no coin
+thickness and no lighting. Don't quote it as accuracy.
+
+## What it can't do
+
+- **No deformity detection with the real model.** Spinal curvature is the
+  deformity proxy and it needs a midline. The dataset gives four landmarks and
+  none of them are midline points, so curvature is `None` on every fish. With
+  `assess_deformity: false` the system routes on trust and length and states
+  "DEFORMITY NOT ASSESSED" on every record; the CULL branch is only reachable
+  from the stub. No public fish keypoint dataset I could find annotates a
+  midline. This is the biggest gap and it's a data problem, not a code problem.
+- **The coplanarity assumption is false and unmeasured.** The fish sits above the
+  calibration plane by roughly half its body depth, so every length reads
+  slightly long. It's a systematic bias, so averaging frames won't remove it.
+  It's the largest error in the system and it needs a tape measure, not code.
+  (A stereo or depth camera is the real fix.)
+- **One fish per frame.** Highest-confidence detection wins. Two overlapping fish
+  is a documented failure, not something this silently averages. There's no
+  tracking anywhere — each frame is an independent grading event.
+- **The card aspect filter is all that identifies a card.** Anything bright,
+  convex, four-sided and roughly 1.586:1 gets measured against. That's how the
+  84.42 mm above happened.
+- **`max_reprojection_residual_px` is still a placeholder and is currently too
+  strict for real photographs.** Both my shots landed at 16-18 px against a
+  threshold of 2.0, so the app withholds millimetres on them. On those frames
+  that was the right call. But I can't set the threshold honestly from two
+  photos taken on the worst possible surface, so it stays marked PLACEHOLDER.
+- **No lens distortion model**, and on the real photos this looks like the
+  dominant error. A lens bends straight lines and a homography can't express
+  that, and it gets worse away from the optical centre — two identical coins in
+  one frame, at different distances from the centre, disagreed by 1.7 mm.
+- **The ArUco path doesn't run.** `marker_length_mm` is null in config and the
+  code refuses to invent a scale. The card path works.
+- **Thresholds.** Most things in `config.yaml` are still marked PLACEHOLDER.
+  Four aren't any more — the eye and dorsal position ranges came off 245
+  ground-truth annotations, and `max_obliquity` came off the sweep above.
 
 ## Layout
 
@@ -286,15 +305,20 @@ pipeline/    capture, detect, calibrate, measure, trust, decide, wiring, overlay
 api/         FastAPI server, WebSocket streaming, REST
 store/       sqlite, one table, no ORM
 cli/         batch.py (video -> csv), make_sample.py (demo frames)
-eval/        dataset.py (Roboflow pull + synthetic stand-in), train.py
+eval/        dataset.py (fetch, leakage audit, regroup), train.py, validate_mm.py
 web/         index.html — the whole frontend, one file, no build step
-tests/       116 tests, 104 of which run without torch installed
-docs/        CALIBRATION.md, DATASETS.md, DECISIONS.md, SESSION_SUMMARY.md
+tests/       130 tests; the ones needing torch skip themselves if it's absent
+docs/        CALIBRATION.md, DATASETS.md, DECISIONS.md, images/
 ```
 
 `pipeline/` imports nothing from `api/`, so the pipeline is usable as a library
 and testable without a server. The batch CLI and the web server run the same
-`Pipeline.process`, so anything the UI shows, the CSV shows too.
+`Pipeline.process`, so whatever the UI shows, the CSV shows too.
+
+Records keep the raw landmarks and the frame path, not just the derived numbers.
+If someone questions a grade I need to show exactly why the system said what it
+said. A human correction never overwrites the machine's decision — the pair is
+the training data for the next model.
 
 ## Tests
 
@@ -302,14 +326,23 @@ and testable without a server. The batch CLI and the web server run the same
 pytest -v
 ```
 
-The ones worth reading are `tests/test_calibrate.py`, because calibration is the
-part most likely to be silently wrong, and
-`test_the_implausible_stub_goes_to_review_with_named_constraints` in
-`tests/test_trust.py`, because that's the failure mode the whole trust layer
-exists for.
+The ones worth reading:
 
-Every test is built from an answer I chose in advance — a 200 mm fish has to
-measure 200 mm, a bent midline has to score above a straight one. A test that
+- `tests/test_calibrate.py` — calibration is the part most likely to be silently
+  wrong, so it gets the most tests.
+- `test_subpixel_refinement_beats_the_raw_threshold` — guards a bug this repo's
+  own synthetic harness found in itself: thresholding after a blur put every
+  measured boundary ~0.41 mm inside the true edge.
+- `test_a_naive_pixels_per_mm_would_fail_the_tilted_case` — checks that the
+  tilted-measurement test actually proves something, by confirming a constant
+  scale factor really would fail the same scene.
+- `test_a_hash_check_would_not_have_caught_this` — why the split leak needed a
+  filename rule rather than deduplication.
+- `test_not_assessing_deformity_is_stated_on_every_record_it_affects` — the
+  switch that makes PASS reachable must not become a silent way to stop culling.
+
+Every test is built from an answer I chose in advance. A 200 mm fish has to
+measure 200 mm; a bent midline has to score above a straight one. A test that
 only asserted "returns a MeasurementSet" would pass on code that computed
 nonsense.
 

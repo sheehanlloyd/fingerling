@@ -3,33 +3,232 @@
 One line per decision, with why. Anything still open sits at the top so I can't
 lose track of it.
 
+## Phase 2 — the day the dataset actually arrived
+
+I got a Roboflow API key and everything that had been blocked since checkpoint 1
+unblocked at once. Most of this section is things I got wrong earlier being
+corrected by data.
+
+### Switched datasets: fishKeypoints out, Fish Measurement in
+
+**fishKeypoints is aerial drone imagery of wild fish schools.** Two keypoints per
+fish, twelve fish per frame, each about 20 pixels long. It's a biomass-counting
+dataset and nothing about it suits a single-station grading tool. I'd picked it
+blind in checkpoint 1 because it was immediately downloadable, and the survey
+said out loud that was a gamble. It lost.
+
+**Fish Measurement** — 245 images, one salmonid parr per frame in a white tray,
+four keypoints, CC BY 4.0 — is the right dataset and my own survey dismissed it
+in three lines without checking. Full write-up in docs/DATASETS.md.
+
+Also: FISH-KP (NIWA) 404s now. The survey's link is dead.
+
+### The schema is four points, and `eye_centre` is new
+
+`snout_tip`, `caudal_fork`, `dorsal_origin`, `eye_centre`. The export ships no
+keypoint names — only `kpt_shape: [4, 3]` — so I read them off rendered
+annotations. I'd first inferred them from summary statistics and got two of the
+four wrong; looking at three pictures corrected it. Statistics were consistent
+with a false story.
+
+I added `eye_centre` rather than forcing the dataset's single eye point into
+`eye_anterior`. Twelve names stay as the vocabulary and the real four are a
+subset, which is what made this a rename table instead of a rewrite.
+
+**What it costs:** fork length and condition factor survive. Total length, body
+depth, depth ratio, peduncle depth and **spinal curvature** do not. Curvature is
+the deformity proxy and therefore the whole CULL criterion, so with the trained
+model this system measures length and does not assess deformity. No public fish
+keypoint dataset I could find annotates a midline.
+
+### Three new plausibility constraints, with MEASURED ranges
+
+Only three of the original ten constraints apply to four landmarks, which left
+the plausibility half of trust scoring with almost nothing to say. Added
+`eye_anterior_to_dorsal_origin` (hard), `eye_in_head_region` (soft) and
+`dorsal_origin_in_mid_body` (soft).
+
+Their ranges came off the 245 ground-truth annotations, not off my intuition:
+the eye sits at 0.042–0.162 of fork length and the dorsal origin at 0.404–0.546.
+Both are widened in config so real biological variation isn't punished. These are
+the first numbers in `config.yaml` that aren't placeholders.
+
+### `decide.assess_deformity`, because the first real run put 100% of fish in review
+
+With curvature always None, the existing rule ("trusted but no curvature →
+REVIEW") sent **25 of 25 real fish to the review queue at a median trust of
+0.96.** A queue containing all the stock is not a grading station.
+
+Two different situations were wearing the same `None`: this detector *can*
+measure curvature and didn't for this fish (suspicious, review it), versus this
+detector can *never* measure curvature (a documented capability limit, and
+re-litigating it per fish tells nobody anything). `assess_deformity: false` says
+the second. It does not silently disable culling — every decision made under it
+carries a "DEFORMITY NOT ASSESSED" reason on the record, so a PASS can't be
+misread as a clean deformity check.
+
+### Millimetres are now gated on `reliable`, not on `calibrated` — this was a bug
+
+A real test frame with no card in it found something card-shaped at obliquity
+4.57 with a 21 px outline residual. The row was correctly tagged
+`calibration_reliable: 0` — **and `fork_length_mm: 84.42` was written to the
+database anyway.** The flag was right and nothing read it.
+
+That's the exact failure this project exists to prevent, sitting in the code the
+whole time. `measure.py` now refuses to produce millimetres without a reliable
+calibration. A number nobody should use must not exist, not merely travel next to
+a flag that something else has to remember to check.
+
+Also split the "why no millimetres" message in two, because "no target in frame"
+and "target found but too oblique to believe" are different problems.
+
+### `max_obliquity` lowered from 2.0 to 1.4, and 2.0 was never justified
+
+Swept a synthetic scene from obliquity 1.00 to 1.71 with `eval/validate_mm`.
+**Measurement accuracy does not degrade with tilt** — max error stayed under
+0.15 mm across the whole range, because a homography undoes perspective properly.
+What fails is detection: past ~1.43 a foreshortened coin stops being round enough
+to find, and past 1.71 the card itself isn't found.
+
+So 1.4 isn't a measured failure point, it's the edge of the evidence. Past it I
+have no data either way, and 2.0 never had any.
+
+### Subpixel edge refinement in `validate_mm`, found by a test that knew the answer
+
+The synthetic scene measured every coin ~0.41 mm small — same magnitude
+regardless of coin size, which is a boundary offset rather than a scale error.
+Cause: `_binarise` blurs before Otsu, the blur turns each edge into a ramp, and
+Otsu's global threshold generally isn't the ramp's midpoint (123 where the
+midpoint was ~93). A threshold above the midpoint cuts inside the object.
+
+Deleting the blur fixes the synthetic case (error → 0.04 mm) and is wrong — the
+blur is there to stop sensor noise shattering contours in a real photo, and the
+size of the bias depends on where Otsu lands, which depends on lighting. It isn't
+a constant I can subtract. Refining each boundary point to the half-maximum
+intensity makes the measurement threshold-independent, which is the property
+worth having. Residual bias +0.14 mm.
+
+I stopped tuning there deliberately. The remaining 0.5% is sub-pixel boundary
+convention on a rasterised hard edge that has no optical blur in it — chasing it
+further would be fitting to my own renderer rather than to reality. Real photos
+are what arbitrate that.
+
+### Two bugs in `fetch_roboflow` that had never run
+
+`versions[-1]` took the *oldest* version — v1, 55 images — because Roboflow
+returns them newest-first. And there was no polling for the server-side export
+build, so the first real call died on `{'progress': 0}`. Code that has never
+executed is not code that works.
+
+### Train/test leakage in the published split — the most consequential find
+
+245 files, **120 source photographs**. Roboflow exports one file per augmented
+copy and the published split was made over files, not photographs, so **34
+sources have copies in more than one split**. The copies aren't byte-identical,
+so a hash check finds nothing.
+
+Trained on that split the model scored pose mAP50-95 **0.953** on "held-out" test
+data that was nothing of the kind. `eval/dataset.py` grew
+`audit_split_leakage()` and `regroup_split()` (group split by source photograph:
+84/22/14 sources, zero leakage), and every number quoted in the README comes from
+a retrain on the clean split.
+
+### What the real photographs changed
+
+Two phone shots of a card and two loonies, and they broke three things no
+synthetic scene could have.
+
+**Global Otsu can't see a real tabletop.** The detector thresholded once and
+assumed the image was bimodal. That scene had carpet at 80, one loonie at 136,
+another at 187 and the card at 227, and Otsu landed on 146 — straight between the
+two coins. One went to background, the other merged with the card, zero
+detections. Replaced with a threshold sweep that keeps whatever is stably round
+at any level, which is the stable-region idea behind MSER without the machinery.
+
+**Perimeter-based circularity is the wrong statistic.** A coin whose edge blended
+into carpet scored 0.697 circularity against a 0.80 bar and was discarded — while
+its area was 133,972 px² against an expected 136,000. The shape was fine, the
+outline was fuzzy, and perimeter is exactly the quantity noise inflates. Now it
+fits an ellipse and compares areas, which is the same argument that already made
+`equivalent_diameter_mm` use area instead of `minEnclosingCircle`.
+
+**Subpixel refinement stopped earning its place, so it's gone.** It existed to
+undo a boundary bias that the single-Otsu detector created. The sweep picks the
+median stable level, which already sits on the middle of the intensity ramp, so
+doing both overshot — it made the synthetic case worse (0.038 mm to 0.159 mm) and
+added about +0.1 mm on both real photos. Deleted rather than kept around.
+
+**Rank matching needed a guard.** A round object on the floor behind the table
+got detected at 9.3 mm and rank-paired against a 26.50 mm loonie, producing a
+-17 mm "error" that was a detection on a different plane. Now: detections outside
+half-to-twice the expected range are discarded as detection failures, and a frame
+whose detection count doesn't match what was expected reports no measurements at
+all rather than pairing the wrong things.
+
+**Rounded corners.** ID-1 specifies a 3.18 mm corner radius, so a real card is
+four straight edges joined by arcs, and each arc departs from a sharp-cornered
+rectangle by about 0.93 mm. The outline residual now excludes a margin around
+each corner. This turned out NOT to be what was inflating my residual — the real
+cause was the outline bleeding into carpet fibres — but it's a genuine bug that
+every real card would hit and no synthetic scene could show.
+
+### The result, and what I'd do next
+
+±1 mm on a 26.5 mm object, against 0.15 mm on synthetic scenes. Both frames were
+flagged unreliable before I measured anything, and both then produced errors
+about five times the synthetic baseline, so the quality signal was right — though
+two frames is evidence, not proof.
+
+The shots were taken on carpet, which is the worst available surface: a card on a
+compressible pile isn't flat and isn't coplanar with coins that sink into it
+differently. Coplanarity accounts for only about a fifth of the measured bias
+(+0.29% predicted at 350 mm, +1.27% measured), and the two coins in one frame
+disagreed by 1.7 mm depending on where they sat in the image, which points at
+lens distortion.
+
+Next experiment is one photo session on a hard matte uniform surface. If the
+residual drops and the error drops with it, that's a real result about the
+quality signal. Until then `max_reprojection_residual_px` stays a PLACEHOLDER —
+2.0 rejects every real photograph I have, and I won't tune it against two shots
+taken on carpet.
+
+### Deliberately NOT done
+
+- **No new dependency for plotting.** The obliquity chart is drawn with OpenCV,
+  which is already a dependency. matplotlib would have been one command and I'd
+  rather ask first.
+- **Didn't correct the residual +0.14 mm.** See above — it would be fitting to
+  my own renderer.
+- **Didn't invent a curvature proxy from snout/dorsal/fork.** A dorsal point sits
+  on the back, not the midline, so its offset from the snout-fork line is mostly
+  just how deep that individual fish is. Natural body-depth variation swamps the
+  bend. It would look like a deformity index and wouldn't be one.
+- **Config still ships `backend: stub`.** The weights live under `runs/`, which is
+  gitignored, so a fresh clone has none. Switching is three lines and the README
+  says which.
+
+
 ## Blocked — needs something only I can do
-
-- **The dataset never downloaded.** fishKeypoints on Roboflow Universe needs an
-  API key. There was no `ROBOFLOW_API_KEY` (or `RF_KEY`) in the environment, an
-  unauthenticated call to `api.roboflow.com` returns HTTP 401 with
-  `"This method requires your API key."`, and getting a key means creating a
-  Roboflow account — which is off-limits. So Phase 2 training against real fish
-  did not happen, and nothing in this repo has ever seen a fish.
-
-  To unblock, one command and one re-run:
-
-  ```
-  export ROBOFLOW_API_KEY=...
-  python -m eval.dataset --fetch data/fishkeypoints
-  python -m eval.dataset --describe data/fishkeypoints   # READ THE SCHEMA FIRST
-  python -m eval.train --data data/fishkeypoints/data.yaml --epochs 100
-  ```
-
-  Everything downstream was built against the stub detector instead, which is
-  what checkpoint 3 exists for. See "the schema I had to invent" below — that's
-  the one consequence of this that isn't just "no model yet".
 
 - **ArUco marker physical size.** `calibration.aruco.marker_length_mm` is still
   null in `config.yaml`. It's `displayed_side_px / phone_PPI * 25.4` and I
   haven't looked up my phone's PPI. The code refuses to calibrate against a
   marker rather than guess a scale, so the card path works today and the marker
-  path doesn't. Unchanged from before.
+  path doesn't.
+
+- **Real millimetre validation.** `eval/validate_mm.py` is written and tested
+  against synthetic scenes, but no photograph has gone through it. That needs me
+  to put a credit card and some coins flat on a table and take a dozen shots.
+  Until then there is no defensible accuracy figure in this repo, and the README
+  says so rather than quoting the synthetic one.
+
+  ```
+  python -m eval.validate_mm shots/ --objects loonie,toonie,quarter --working-distance-mm 300
+  ```
+
+- **The coplanarity bias.** Still unmeasured and still the largest error in the
+  system. Needs me and a tape measure. Nothing in software fixes it — OctaPulse
+  solved the same problem with a depth camera.
 
 ## Open — my call, not yet made
 
@@ -40,10 +239,10 @@ lose track of it.
   list, and they're the ones I'd least want quoted, because they set the width of
   every error bar the app prints.
 
-- **Whether the invented landmark schema survives contact with real data.** See
-  below. It's twelve points chosen to be a subset of FishPhenoKey's 22 plus one
-  that FishPhenoKey doesn't have. When the real annotations land, this either
-  needs a rename table or it needs the trait list adjusted, and that's my call.
+- **Whether to chase FishPhenoKey after all.** Its 22 keypoints are the only
+  route I know to a midline, and a midline is the only route to deformity
+  grading. It needs a signed agreement emailed to a maintainer. Everything in
+  this repo works without it; the CULL branch doesn't.
 
 - **The coplanarity bias.** Still unmeasured and still the largest error in the
   system — bigger than everything in docs/CALIBRATION.md put together. Needs me
@@ -303,7 +502,8 @@ These weren't in the spec. I want to either ratify or reverse each one.
   training script or prove the harness runs. I proved it: geometric fish, real
   YOLO-pose labels, real training on MPS with amp=False. **The resulting model
   has learned to find a polygon and its metrics say nothing about fish.** They're
-  in docs/SESSION_SUMMARY.md labelled as such and they should never be quoted.
+  labelled as such and they should never be quoted. That model has since been
+  replaced by one trained on real fish — see the Phase 2 section at the top.
 - **`fetch_roboflow` uses urllib and the documented REST endpoints**, not the
   `roboflow` pip package. It's two requests; a dependency whose only job is to
   make two requests isn't worth it.
@@ -319,7 +519,7 @@ These weren't in the spec. I want to either ratify or reverse each one.
 - **`store.db.constraint_counts()` added.** I reported the per-constraint tally
   from the YOLO run by hand and got it wrong — counted joined strings, so
   multi-failure rows were bucketed together and no-failure rows appeared as an
-  empty key. Real figures are in docs/SESSION_SUMMARY.md. Flattening is the only
+  empty key. Flattening is the only
   correct way to read that column so it lives in one function now, and the batch
   CLI prints it beside the latency table. It's also the query Phase 3 needs for a
   coverage curve.
